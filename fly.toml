@@ -26,16 +26,20 @@
 # diisi lewat `fly secrets` di dashboard.
 
 app = "solea-backend"
-primary_region = "sin"   # Singapore, dekat Indonesia
+# Region: sin (Singapore, dekat Indonesia) / ams (Amsterdam, lebih stabil)
+# Ganti sesuai kebutuhan. Kalau pakai CLI `fly launch --region sin`,
+# Fly otomatis set primary_region di sini.
+primary_region = "sin"
 
 [http_service]
   internal_port = 8080
   force_https = true
 
 [[vm]]
-  # Free tier: shared-CPU 256MB. Bisa naikkan setelah upgrade.
+  # Free tier: shared-CPU 512MB (minimum Fly.io).
+  # Bisa dinaikkan setelah upgrade (shared-cpu-2x = 2x shared CPU).
   size = "shared-cpu-2x"
-  memory = "256MB"
+  memory = "512MB"
 
 [build]
   # Build pakai Dockerfile di root.

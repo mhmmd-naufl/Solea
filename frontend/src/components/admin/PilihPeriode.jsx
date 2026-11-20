@@ -12,7 +12,7 @@ import { NAMA_BULAN } from '../../utils/periode'
  * Perubahan TIDAK langsung diterapkan — user harus klik "Terapkan" dulu.
  * Ini mencegah dashboard refresh berkali-kali saat user masih memilih.
  */
-export default function PilihPeriode({ nilai, onGanti, className }) {
+export default function PilihPeriode({ nilai, onGanti }) {
   const { bulan, tahun } = nilai
   const [buka, setBuka] = useState(false)
   const [draft, setDraft] = useState({ bulan, tahun })

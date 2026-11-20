@@ -1,9 +1,11 @@
+import { BUSINESS_NAME } from '../config'
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Search, Package, Loader2, MapPin, Phone, Calendar, PackageCheck, Camera } from 'lucide-react'
 import { transactionsApi, configApi } from '../services/api'
 import { getStatusConfig, formatRupiah, formatDateTime } from '../utils/helpers'
 import { cn } from '../utils/helpers'
+import LihatFoto from './LihatFoto'
 
 const FLOW = ['Diterima', 'Diproses', 'Diperiksa', 'Selesai', 'Siap diambil']
 
@@ -29,7 +31,7 @@ const LABEL_BAYAR = {
   qris: 'QRIS / E-Wallet',
 }
 
-const WA_DEFAULT = '628980570911'
+const WA_DEFAULT = '6280000000000' // ganti lewat BUSINESS_PHONE di .env backend
 
 const FOTO_META = [
   { kunci: 'photo_before', label: 'Sebelum dicuci' },
@@ -54,7 +56,7 @@ export default function StatusTracker() {
   const [pollingBerhenti, setPollingBerhenti] = useState(false)
 
   useEffect(() => {
-    document.title = 'Cek Status — Komang SAC'
+    document.title = `Cek Status — ${BUSINESS_NAME}`
     configApi.get().then(({ data }) => setConfig(data)).catch(() => {})
   }, [])
 
@@ -111,8 +113,8 @@ export default function StatusTracker() {
   // --- Polling: perbarui status tanpa refresh manual ---------------------
   // Kenapa bukan Supabase Realtime? Realtime `postgres_changes` menghormati
   // RLS. Pakai anon key di browser tanpa policy yang ketat berarti siapa
-  // pun bisa membaca transaksi orang lain. RLS belum rapi, jadi polling
-  // dipilih dulu: aman, tanpa dependency baru, dan langsung berfungsi.
+  // pun bisa membaca transaksi orang lain. RLS sekarang aktif di semua tabel,
+  // tapi polling tetap dipilih: aman, tanpa dependency baru, dan langsung jalan.
   const kodeDipantau = result?.kode || ''
   const sudahFinal = result ? STATUS_FINAL.includes(result.status) : false
 
@@ -144,7 +146,7 @@ export default function StatusTracker() {
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [kodeDipantau, sudahFinal, pollingBerhenti, cari])
 
-  // Link /status?kode=KS-XXXXXX (dari halaman akun, setelah booking, atau
+  // Link /status?kode=TRX-XXXXXX (dari halaman akun, setelah booking, atau
   // tombol Lacak lain) langsung mengisi form dan mencari -- konsumen tidak
   // mengetik ulang kodenya. Dependensi `searchParams` penting: dulu efek ini
   // hanya jalan sekali saat mount, jadi berpindah kode saat sudah berada di
@@ -197,7 +199,7 @@ export default function StatusTracker() {
               value={code}
               onChange={(e) => { setCode(e.target.value); setNotFound(false); setError(null) }}
               className="input pl-9 font-mono uppercase"
-              placeholder="KS-ABC123"
+              placeholder="TRX-ABC123"
             />
           </div>
           <button type="submit" disabled={searching || !code.trim()} className="btn-primary sm:px-8">
@@ -266,13 +268,28 @@ export default function StatusTracker() {
 
             <div className="p-5 grid sm:grid-cols-2 gap-4 text-sm">
               <div>
-                <p className="text-slate-500 text-xs">Sepatu</p>
+                <p className="text-slate-500 text-xs">Barang</p>
                 <p className="font-medium">{result.shoes?.merk} {result.shoes?.model}</p>
                 <p className="text-xs text-slate-500 mt-0.5">{result.shoes?.jenis_treatment}</p>
+                {result.nama_sepatu && (
+                  <p className="text-xs text-slate-600 mt-1">
+                    {result.nama_sepatu}
+                    {result.jenis_sepatu ? ` · ${result.jenis_sepatu}` : ''}
+                  </p>
+                )}
               </div>
               <div>
                 <p className="text-slate-500 text-xs">Biaya</p>
-                <p className="font-medium text-primary-700">{formatRupiah(result.harga)}</p>
+                {/* Yang ditagih adalah harga BERSIH setelah diskon admin.
+                    Diskon ditampilkan biar tidak beda angka dengan invoice WA. */}
+                <p className="font-medium text-primary-700">
+                  {formatRupiah(Math.max((result.harga || 0) - (result.diskon || 0), 0))}
+                </p>
+                {result.diskon > 0 && (
+                  <p className="text-xs text-emerald-600 mt-0.5">
+                    diskon {formatRupiah(result.diskon)} dari {formatRupiah(result.harga)}
+                  </p>
+                )}
                 {result.payment_method && (
                   <p className="text-xs text-slate-500 mt-0.5">
                     via {LABEL_BAYAR[result.payment_method] || result.payment_method}
@@ -354,7 +371,7 @@ export default function StatusTracker() {
               Pengerjaanmu butuh waktu ekstra dari estimasi (±{estimasiHari} hari).{' '}
               <a
                 href={`https://wa.me/${waAdmin}?text=${encodeURIComponent(
-                  `Halo Komang SAC, saya mau tanya progres sepatu saya yang nomor ${result.kode}.`
+                  `Halo ${BUSINESS_NAME}, saya mau tanya progres sepatu saya yang nomor ${result.kode}.`
                 )}`}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -369,11 +386,18 @@ export default function StatusTracker() {
           <div className="card p-5 sm:p-6">
             <h3 className="font-semibold text-slate-900 mb-5">Progres Pengerjaan</h3>
             <div className="relative">
-              {/* Track line */}
-              <div className="absolute left-[15px] right-[15px] top-[15px] h-0.5 bg-slate-200" aria-hidden="true">
+              {/* Track line: VERTIKAL (menyambung antar ikon langkah), bukan
+                  horizontal. Dulu garisnya di-horizontal (left-right) padahal
+                  daftarnya bertumpuk vertikal, hingga tampak menyilang di antara
+                  ikon; progresnya juga dipakai lebar. Kini lebar w-0.5, dan
+                  "sudah lewat seberapa jauh" memakai kesetaraan tinggi div. */}
+              <div
+                className="absolute left-[15px] top-[16px] bottom-[16px] w-0.5 bg-slate-200"
+                aria-hidden="true"
+              >
                 <div
                   className="h-full bg-primary-600 transition-all duration-500"
-                  style={{ width: `${(currentStep / (FLOW.length - 1)) * 100}%` }}
+                  style={{ height: `${(currentStep / (FLOW.length - 1)) * 100}%` }}
                 />
               </div>
 
@@ -386,7 +410,10 @@ export default function StatusTracker() {
                     <li key={step} className="flex gap-4">
                       <div
                         className={cn(
-                          'relative z-10 flex-shrink-0 h-8 w-8 rounded-full items-center justify-center border-2 transition-colors',
+                          // `flex` WAJIB di sini: dulu hanya items-center/
+                          // justify-center tanpa display flex, sehingga ikon
+                          // tidak ke tengah lingkaran (menempel pojok atas).
+                          'relative z-10 flex-shrink-0 flex items-center justify-center h-8 w-8 rounded-full border-2 transition-colors',
                           done && 'bg-primary-600 border-primary-600 text-white',
                           active && 'bg-white border-primary-600 text-primary-600 ring-4 ring-primary-100',
                           !done && !active && 'bg-white border-slate-200 text-slate-300'
@@ -424,13 +451,7 @@ export default function StatusTracker() {
               </h3>
               <div className={cn('grid gap-3', fotoAda.length > 1 ? 'grid-cols-2' : 'grid-cols-1')}>
                 {fotoAda.map((f) => (
-                  <a
-                    key={f.kunci}
-                    href={result[f.kunci]}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="group block"
-                  >
+                  <LihatFoto key={f.kunci} src={result[f.kunci]} alt={f.label} className="group">
                     <img
                       src={result[f.kunci]}
                       alt={f.label}
@@ -438,7 +459,7 @@ export default function StatusTracker() {
                       className="w-full aspect-square object-cover rounded-xl border border-slate-200 group-hover:opacity-90 transition-opacity"
                     />
                     <p className="text-xs text-slate-500 mt-1.5">{f.label}</p>
-                  </a>
+                  </LihatFoto>
                 ))}
               </div>
             </div>
@@ -466,7 +487,7 @@ export default function StatusTracker() {
               )}
               <a
                 href={`https://wa.me/${waAdmin}?text=${encodeURIComponent(
-                  `Halo Komang SAC, saya mau ambil sepatu booking ${result.kode}`
+                  `Halo ${BUSINESS_NAME}, saya mau ambil sepatu booking ${result.kode}`
                 )}`}
                 target="_blank"
                 rel="noopener noreferrer"

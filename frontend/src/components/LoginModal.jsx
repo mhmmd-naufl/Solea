@@ -1,3 +1,4 @@
+import { BUSINESS_NAME } from '../config'
 import { useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import {
@@ -84,7 +85,7 @@ export default function LoginModal() {
           phone: formData.phone,
           password: formData.password,
         })
-        toast.success('Akun dibuat', 'Selamat datang di Komang SAC. Kamu sudah masuk.')
+        toast.success('Akun dibuat', `Selamat datang di ${BUSINESS_NAME}. Kamu sudah masuk.`)
         navigate('/', { replace: true })
       }
     } catch (err) {
@@ -172,7 +173,7 @@ export default function LoginModal() {
         value={formData.phone}
         onChange={handleChange}
         className={cn('input', errors.phone && 'input-error')}
-        placeholder="08123456789"
+        placeholder="628123456789"
         autoComplete="tel"
       />
       {errors.phone && <p className="text-xs text-rose-600 mt-1">{errors.phone}</p>}
@@ -278,7 +279,7 @@ export default function LoginModal() {
             <Logo className="h-12 w-12 mx-auto mb-3" fallbackClassName="bg-primary-600 rounded-2xl" />
             <h1 className="text-2xl font-bold text-slate-900">Masuk</h1>
             <p className="text-sm text-slate-500 mt-1">
-              Selamat datang kembali di <span className="font-medium text-slate-700">Komang SAC</span>
+              Selamat datang kembali di <span className="font-medium text-slate-700">{BUSINESS_NAME}</span>
             </p>
           </div>
 
@@ -316,7 +317,7 @@ export default function LoginModal() {
         <div className="md:col-span-2 bg-primary-700 text-white p-8 flex flex-col">
           <div className="flex items-center gap-2 mb-8">
             <Logo variant="putih" className="h-9 w-9" fallbackClassName="bg-white/15 rounded-xl" />
-            <span className="font-bold text-lg">Komang SAC</span>
+            <span className="font-bold text-lg">{BUSINESS_NAME}</span>
           </div>
 
           <h2 className="text-2xl font-bold leading-tight">

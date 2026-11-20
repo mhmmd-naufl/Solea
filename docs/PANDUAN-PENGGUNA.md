@@ -1,6 +1,6 @@
-# Panduan Pengguna Komang SAC
+# Panduan Pengguna Cuci Sepatu
 
-Dokumen ini untuk **siapa pun yang memakai aplikasi Komang SAC** — pemilik
+Dokumen ini untuk **siapa pun yang memakai aplikasi Cuci Sepatu** — pemilik
 (admin), teknisi, mitra drop point, dan konsumen. Fokusnya: cara login, apa
 saja yang bisa dilakukan tiap peran, dan cara kerja fitur secara berurutan.
 
@@ -14,7 +14,7 @@ Dokumen teknis (arsitektur, penyebaran, kredensial) dibahas di file terpisah:
 
 ---
 
-## 1. Komang SAC itu apa?
+## 1. Cuci Sepatu itu apa?
 
 Aplikasi kegiatan cuci sepatu (lengkap dengan bay, topi, dan helm) yang
 menghubungkan **konsumen**, **teknisi**, **mitra drop point**, dan **admin**
@@ -29,7 +29,7 @@ dalam satu tempat:
 - Admin mengatur katalog layanan, transaksi, pengguna, persediaan, dan
   pengeluaran — termasuk laporan omzet & profit.
 
-Nomor tracking konsumen berformat **`KS-XXXXXX`** (6 karakter; huruf tanpa
+Nomor tracking konsumen berformat **`TRX-XXXXXX`** (6 karakter; huruf tanpa
 I/O dan angka tanpa 0/1 supaya tidak tertukar saat dibacakan).
 
 ---
@@ -122,7 +122,7 @@ kamu ke `/login` lalu kembali ke tempat semula.
 ### 3.3 Melacak status
 
 Tanpa perlu log masuk: buka **Cek Status** (`/status`), masukkan kode
-`KS-XXXXXX`. Pelacak ini sama yang dipakai teknisi/admin untuk menautkan
+`TRX-XXXXXX`. Pelacak ini sama yang dipakai teknisi/admin untuk menautkan
 kode ke halaman publik.
 
 ### 3.4 Akun saya
@@ -278,7 +278,7 @@ backend yang benar (di produksi: domain Railway). Lihat juga bagian
 Troubleshooting di `docs/OPERASIONAL.md`.
 
 **Kode tracking tak ketemu**
-Pastikan format `KS-XXXXXX` dan tidak satu butir berbeda (huruf I/O dan
+Pastikan format `TRX-XXXXXX` dan tidak satu butir berbeda (huruf I/O dan
 angka 0/1 memang tidak digunakan pada kode — kalau kamu membacanya, itu
 sebenarnya huruf lain).
 

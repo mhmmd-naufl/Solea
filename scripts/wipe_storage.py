@@ -61,7 +61,7 @@ def bersihkan_prefix(supabase: Client, bucket: str, prefix: str = "") -> int:
 
 def main():
     load_dotenv()
-    url = os.getenv("SUPABASE_URL", "https://cssajztordwhsqaonzgn.supabase.co")
+    url = os.environ["SUPABASE_URL"]
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SERVICE_KEY")
     if not key:
         print("ERROR: SUPABASE_SERVICE_ROLE_KEY belum diisi di .env")

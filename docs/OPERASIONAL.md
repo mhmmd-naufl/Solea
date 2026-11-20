@@ -1,4 +1,4 @@
-# Operasional — Komang SAC
+# Operasional — Cuci Sepatu
 
 Panduan setup, konfigurasi, dan deploy. Untuk penjelasan arsitektur, lihat
 [ARSITEKTUR.md](ARSITEKTUR.md).
@@ -54,15 +54,15 @@ Kalau semua baris keluar "lengkap", database sudah siap dipakai.
 ### 3. Konfigurasi env
 
 Kredensial backend **tidak ada di repo publik**. Semuanya tinggal di repo
-privat (`Komang_SAC_privat`), di folder `privat/` — dan folder itu diabaikan
+privat (`<repo>_privat`), di folder `privat/` — dan folder itu diabaikan
 `.gitignore` repo publik.
 
 Cara tercepat di laptop baru:
 
 ```bash
-git clone https://github.com/mhmmd-naufl/Komang_SAC.git
-cd Komang_SAC
-git clone https://github.com/mhmmd-naufl/Komang_SAC_privat.git privat
+git clone https://github.com/<owner>/<repo>.git
+cd <repo>
+git clone https://github.com/<owner>/<repo>_privat.git privat
 ```
 
 Folder `privat/` sekarang sudah berisi `.env` (kredensial backend) dan
@@ -99,7 +99,7 @@ keduanya dashboard tetap jalan dengan ringkasan berbasis aturan.
 
 > **Kenapa wajib `service_role`?** Backend memakai service-role key: key itu
 > **melewati RLS** dan boleh menulis, sedangkan anon key tidak boleh menulis
-> tabel yang RLS-nya aktif (saat ini `expenses`). Gejalanya kalau salah pakai
+> tabel yang RLS-nya aktif (sekarang semua tabel). Gejalanya kalau salah pakai
 > anon key: `SELECT` tidak error tapi **balikin 0 baris** diam-diam, sedangkan
 > `INSERT`/`UPDATE` **ditolak**. Gejalanya sangat membingungkan, jadi backend
 > sekarang berhenti dengan pesan error kalau kunci ini belum diisi.
@@ -143,7 +143,7 @@ tahu address backend-nya.
 
 ```bash
 python bootstrap_admin.py
-python bootstrap_admin.py 628980570911 "PasswordKuat123"
+python bootstrap_admin.py 6280000000000 "PasswordKuat123"
 ```
 
 ### 5. Isi data dummy (opsional, buat demo)
@@ -160,7 +160,7 @@ filter, dan halaman tracking langsung kelihatan terisi.
 
 ```bash
 python seed_pricelist.py --dry-run   # lihat dulu, tidak menulis apa pun
-python seed_pricelist.py            # tulis 27 layanan asli Komang SAC
+python seed_pricelist.py            # tulis master layanan & harga
 ```
 
 Mengisi 27 layanan dalam 3 kelompok katalog (Cuci Sepatu / Bag, Hat & Helmet /
@@ -179,7 +179,7 @@ python seed_dummy.py --reset
 ### 7. Akun dan password
 
 Password **tidak bisa dibaca balik** dari database — tersimpan sebagai hash
-PBKDF2-SHA256.
+Argon2id (hash PBKDF2 lama masih diterima supaya user existing tidak perlu reset).
 
 Data akun demo dibuat oleh `seed_dummy.py`. Nomor HP dan password awal ikut
 tertulis di file itu -- **jangan disalin ke dokumen publik**, karena daftar
@@ -192,14 +192,14 @@ python manage_users.py list
 
 | Nomor | Peran |
 |---|---|
-| `628980570911` | Admin |
+| `6280000000000` | Admin |
 | `628991000001` … `003` | Teknisi |
 | `628981000001` | Konsumen |
 
 Reset password kapan saja:
 
 ```bash
-python manage_users.py reset 628980570911 "PasswordKuat123"
+python manage_users.py reset 6280000000000 "PasswordKuat123"
 ```
 
 Di halaman `/login` saat `npm run dev`, ada blok **"Akun demo"** — klik salah
@@ -218,9 +218,10 @@ uvicorn main:app --reload --port 8001
 Cek `http://127.0.0.1:8001/health` — harus balas Supabase `terkoneksi`.
 Dokumentasi interaktif: `http://127.0.0.1:8001/docs`
 
-> **Kenapa port 8001?** Port 8000 dipakai aplikasi lain (VibeSift) di mesin
-> yang sama. Kalau dua backend merebut satu port, frontend diam-diam memakai
-> API yang salah dan gejalanya muncul sebagai "Not Found" yang menyesatkan.
+> **Kenapa port 8001?** Port 8000 sengaja dihindari supaya tidak bentrok
+> dengan backend lain di mesin yang sama. Kalau dua backend merebut satu port,
+> frontend diam-diam memakai API yang salah dan gejalanya muncul sebagai
+> "Not Found" yang menyesatkan.
 
 ### 9. Jalankan frontend
 
@@ -328,9 +329,9 @@ menulis apa pun.
 ## 4. Sebelum Deploy
 
 - [ ] Jalankan `migrate.sql` di Supabase (termasuk kolom `selesai_at`)
-- [ ] Jalankan `python seed_pricelist.py` untuk mengisi 27 layanan asli
+- [ ] Jalankan `python seed_pricelist.py` untuk mengisi master layanan & harga
 - [ ] Ganti `JWT_SECRET_KEY` di `privat/.env`
-- [ ] Ganti password admin bawaan — `python manage_users.py reset 628980570911 "..."`
+- [ ] Ganti password admin bawaan — `python manage_users.py reset 6280000000000 "..."`
 - [ ] Isi `BUSINESS_PHONE` di `privat/.env` — nomor WA outlet yang dipakai
       pelanggan untuk menghubungi (tombol WA di form booking dan di halaman
       lacak status). **Tidak wajib**: frontend punya fallback `WA_DEFAULT`
@@ -340,9 +341,8 @@ menulis apa pun.
 - [ ] Tambahkan secret CI di GitHub (kalau mau uji database jalan di Actions)
 - [ ] Isi `CLEANUP_TOKEN` di `.env` backend, lalu tambahkan secret `BACKEND_URL`
       dan `CLEANUP_TOKEN` di GitHub Actions supaya foto auto-hapus jalan
-- [ ] **Aktifkan RLS** di Supabase (lihat bagian [7] di `migrate.sql`) — RLS
-      saat ini baru aktif di tabel `expenses`, jadi anon key masih bisa membaca
-      semua tabel
+- [ ] **Jalankan `rls.sql`** di Supabase SQL Editor — RLS aktif di keenam tabel
+      dan anon/authenticated tidak bisa membaca data apa pun
 - [ ] Set `VITE_API_BASE_URL` untuk Vercel
 - [ ] Import data master dari Excel (format ada di [data.md](data.md))
 
@@ -368,11 +368,11 @@ repo privat terpisah.
 
 ```bash
 # 1. Clone repo publik
-git clone https://github.com/mhmmd-naufl/Komang_SAC.git
-cd Komang_SAC
+git clone https://github.com/<owner>/<repo>.git
+cd <repo>
 
 # 2. Clone repo privat ke folder privat/
-git clone https://github.com/mhmmd-naufl/Komang_SAC_privat.git privat
+git clone https://github.com/<owner>/<repo>_privat.git privat
 
 # 3. Frontend butuh variabel VITE_* (satu file)
 copy privat\frontend.env frontend\.env
@@ -408,7 +408,7 @@ menang, dan sisanya tetap diambil dari `privat/.env`.
 | Backend berhenti saat start: "JWT_SECRET_KEY belum diisi" | `privat/.env` belum ada / nilainya masih placeholder. Isi dengan `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
 | Backend berhenti: "SUPABASE_SERVICE_ROLE_KEY belum diisi" | Pakai anon key. Backend butuh service-role key |
 | Semua data kosong padahal tabel ada | RLS + anon key. Backend harus pakai service-role key, bukan anon |
-| Frontend "Not Found" padahal backend jalan | Port bentrok. Komang SAC pakai **8001**, bukan 8000 |
+| Frontend "Not Found" padahal backend jalan | Port bentrok. Cuci Sepatu pakai **8001**, bukan 8000 |
 | Layar putih setelah edit | Jalankan `npm run lint` — biasanya ada variabel yang salah dihapus dari import |
 | `PGRST100` saat mengetik di kolom pencarian | Bug sudah diperbaiki di backend; kalau muncul, pastikan versi terbaru |
 | `PGRST103` saat pindah halaman | Bug sudah diperbaiki di backend (halaman di-clamp) |

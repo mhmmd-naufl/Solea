@@ -1,0 +1,104 @@
+name: Backup Database
+
+# Backup harian pukul 18.00 UTC (01.00 WIB) dan bisa dijalankan manual.
+# Butuh secret: BACKUP_SUPABASE_URL, BACKUP_SUPABASE_SERVICE_ROLE_KEY.
+# Opsional untuk offsite: BACKUP_S3_BUCKET, BACKUP_S3_ENDPOINT,
+#                        AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION.
+on:
+  schedule:
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependency
+        run: pip install -r requirements.txt
+
+      - name: Cek secret backup
+        id: gate
+        env:
+          DB_URL: ${{ secrets.BACKUP_SUPABASE_URL }}
+          DB_KEY: ${{ secrets.BACKUP_SUPABASE_SERVICE_ROLE_KEY }}
+          S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+        run: |
+          if [ -n "$DB_URL" ] && [ -n "$DB_KEY" ]; then
+            echo "has_db=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_db=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Backup dilewati::Isi BACKUP_SUPABASE_URL dan BACKUP_SUPABASE_SERVICE_ROLE_KEY di Settings > Secrets and variables > Actions."
+          fi
+          if [ -n "$S3_BUCKET" ]; then
+            echo "has_s3=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_s3=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Siapkan environment sementara
+        if: steps.gate.outputs.has_db == 'true'
+        env:
+          DB_URL: ${{ secrets.BACKUP_SUPABASE_URL }}
+          DB_KEY: ${{ secrets.BACKUP_SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          umask 077
+          {
+            echo "SUPABASE_URL=${DB_URL}"
+            echo "SUPABASE_SERVICE_ROLE_KEY=${DB_KEY}"
+          } > .env
+          echo "File .env sementara dibuat (tidak masuk git)."
+
+      - name: Ambil backup
+        if: steps.gate.outputs.has_db == 'true'
+        env:
+          BACKUP_OUTPUT_DIR: backup_out
+        run: python scripts/backup_database.py
+
+      - name: Simpan sebagai artifact (retensi 30 hari)
+        if: steps.gate.outputs.has_db == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: backup_out/*.json
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Izinkan akses S3/R2 (opsional)
+        if: steps.gate.outputs.has_db == 'true' && steps.gate.outputs.has_s3 == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Salin ke bucket S3/R2 (opsional)
+        if: steps.gate.outputs.has_db == 'true' && steps.gate.outputs.has_s3 == 'true'
+        env:
+          BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          BACKUP_S3_ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
+        run: |
+          ENDPOINT_ARG=""
+          if [ -n "$BACKUP_S3_ENDPOINT" ]; then
+            ENDPOINT_ARG="--endpoint-url $BACKUP_S3_ENDPOINT"
+          fi
+          aws s3 cp backup_out/ "s3://${BACKUP_S3_BUCKET}/db/" --recursive $ENDPOINT_ARG
+
+      - name: Bersihkan kredensial
+        if: always()
+        run: rm -f .env

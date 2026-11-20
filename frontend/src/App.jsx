@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { BUSINESS_NAME } from "./config";
+import { lazy, Suspense, useEffect, useState } from "react";
 import {
   Routes,
   Route,
@@ -20,22 +21,35 @@ import {
 import Navbar from "./components/Navbar";
 import Catalog from "./components/Catalog";
 import BookingModal, { KUNCI_PENDING_BOOKING } from "./components/BookingModal";
-import AdminDashboard from "./components/AdminDashboard";
-import LoginModal from "./components/LoginModal";
-import StatusTracker from "./components/StatusTracker";
 import LogoutConfirm from "./components/LogoutConfirm";
 import Logo from "./components/Logo";
-import TeknisiPage from "./components/TeknisiPage";
-import DropPointPage from "./components/DropPointPage";
-import CustomerAccount from "./components/CustomerAccount";
-import AdminShoes from "./components/admin/AdminShoes";
-import AdminTransaksi from "./components/admin/AdminTransaksi";
-import AdminStock from "./components/admin/AdminStock";
-import AdminUsers from "./components/admin/AdminUsers";
-import AdminExpenses from "./components/admin/AdminExpenses";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { Toaster } from "./components/Toast";
 import { cn } from "./utils/helpers";
+
+// Halaman-halaman berat dimuat per rute supaya bundle awal tetap ringan.
+const AdminDashboard = lazy(() => import("./components/AdminDashboard"));
+const LoginModal = lazy(() => import("./components/LoginModal"));
+const StatusTracker = lazy(() => import("./components/StatusTracker"));
+const TeknisiPage = lazy(() => import("./components/TeknisiPage"));
+const DropPointPage = lazy(() => import("./components/DropPointPage"));
+const CustomerAccount = lazy(() => import("./components/CustomerAccount"));
+const AdminShoes = lazy(() => import("./components/admin/AdminShoes"));
+const AdminTransaksi = lazy(() => import("./components/admin/AdminTransaksi"));
+const AdminStock = lazy(() => import("./components/admin/AdminStock"));
+const AdminUsers = lazy(() => import("./components/admin/AdminUsers"));
+const AdminExpenses = lazy(() => import("./components/admin/AdminExpenses"));
+
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="flex flex-col items-center gap-3 text-slate-500">
+        <div className="h-9 w-9 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
+        <p className="text-sm">Memuat halaman...</p>
+      </div>
+    </div>
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /* Public Layout                                                       */
@@ -48,12 +62,12 @@ function PublicLayout({ children }) {
       <main className="flex-1">{children}</main>
       <footer className="border-t border-slate-200 bg-white">
         <div className="container-main py-8 text-center text-sm text-slate-500">
-          <p className="font-semibold text-slate-700">Komang SAC</p>
+          <p className="font-semibold text-slate-700">{BUSINESS_NAME}</p>
           <p className="mt-1">
             Cuci sepatu profesional dengan tracking real-time.
           </p>
           <p className="mt-2 text-xs">
-            &copy; 2026 Komang SAC. Semua hak dilindungi.
+            &copy; 2026 {BUSINESS_NAME}. Semua hak dilindungi.
           </p>
         </div>
       </footer>
@@ -88,16 +102,17 @@ const STEPS = [
   },
 ];
 
+// TIDAK ada alamat/jalan di sini, dan itu disengaja: daftar jalan yang
+// di-hardcode cepat usang dan dulu malah tampil di pilihan outlet mau pun
+// beranda. Lokasi lengkap dijelaskan admin lewat WhatsApp saat konfirmasi.
 const DROP_POINTS = [
   {
     name: "Outlet Utama",
-    sub: "Jl. Cisadane No.3",
-    addr: "Lingkungan Mojoroto R, Singonegaran, Kec. Banyuwangi, Kabupaten Banyuwangi, Jawa Timur 68415",
+    sub: "Outlet utama",
   },
   {
-    name: "Dolay Cut",
+    name: "Mitra Drop Point",
     sub: "Mitra drop point",
-    addr: "Jl. Kyai Haji Wahid Hasyim No. 76, Kabupaten Banyuwangi",
   },
 ];
 
@@ -222,7 +237,6 @@ function HomePage() {
                     <p className="text-xs text-slate-500">{dp.sub}</p>
                   </div>
                 </div>
-                <p className="text-sm text-slate-600">{dp.addr}</p>
               </div>
             ))}
           </div>
@@ -350,7 +364,7 @@ function AdminLayout() {
       >
         <div className="flex flex-col h-full">
           <div className="p-6 border-b border-slate-200">
-            <h1 className="text-xl font-bold text-primary-700">Komang SAC</h1>
+            <h1 className="text-xl font-bold text-primary-700">{BUSINESS_NAME}</h1>
             <p className="text-xs text-slate-500 mt-0.5">Admin Panel</p>
           </div>
 
@@ -408,7 +422,7 @@ function AdminLayout() {
               <Menu className="h-6 w-6 text-slate-600" />
             </button>
             <h1 className="text-lg font-bold text-slate-900">
-              Komang SAC Admin
+              {BUSINESS_NAME} Admin
             </h1>
           </div>
         </header>
@@ -442,7 +456,7 @@ const JUDUL_PERAN = {
 function RoleLayout() {
   const { user } = useAuth();
   const [konfirmasiKeluar, setKonfirmasiKeluar] = useState(false);
-  const meta = JUDUL_PERAN[user?.role] || { judul: "Komang SAC", sub: "" };
+  const meta = JUDUL_PERAN[user?.role] || { judul: BUSINESS_NAME, sub: "" };
   const Inisial = user?.full_name?.charAt(0).toUpperCase() || "?";
 
   return (
@@ -455,7 +469,7 @@ function RoleLayout() {
               fallbackClassName="bg-primary-600 rounded-lg"
             />
             <span className="hidden sm:block font-bold text-primary-700">
-              Komang SAC
+              {BUSINESS_NAME}
             </span>
           </Link>
 
@@ -494,7 +508,7 @@ function RoleLayout() {
 
       <footer className="border-t border-slate-200 bg-white py-5">
         <div className="container-main text-center text-xs text-slate-400">
-          Komang SAC &copy; 2026
+          {BUSINESS_NAME} &copy; 2026
         </div>
       </footer>
 
@@ -576,7 +590,9 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppRoutes />
+      <Suspense fallback={<LoadingFallback />}>
+        <AppRoutes />
+      </Suspense>
       <Toaster />
     </AuthProvider>
   );

@@ -1,4 +1,4 @@
-# Review Role — Komang SAC
+# Review Role — Cuci Sepatu
 
 > Dokumen ringkasan review per role dan rekomendasi upgrade fitur
 
@@ -132,7 +132,7 @@ Alur:
 
 ### Catatan Khusus
 - **Notif WA status:** Skip, cukup di web
-- **Foto layanan:** Pakai logo biru (`/assets/logo-biru.png`) untuk sekarang
+- **Foto layanan:** Pakai aset generik (`/assets/layanan-default.svg`) untuk sekarang
 - **Pembatalan:** Bisa via admin dulu, fitur sistem nanti
 
 ---
@@ -216,7 +216,7 @@ Berdasarkan fitur-fitur yang sudah direview:
 ### Konsumen
 - [x] Foto progres (sebelum & sesudah) — sudah ada di StatusTracker dan halaman Akun
 - [x] Reset password via admin — endpoint `POST /api/users/{id}/reset-password` + tombol gembok di halaman Pengguna
-- [x] Logo layanan (sudah implementasi) — `logo-biru.png` di katalog & BookingModal
+- [x] Gambar layanan default (sudah implementasi) — `layanan-default.svg` di katalog & BookingModal
 
 ### Drop Point
 - [x] Filter & search transaksi — sudah ada (search + filter status)

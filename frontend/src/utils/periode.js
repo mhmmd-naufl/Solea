@@ -55,7 +55,6 @@ export function tanggalWib(iso) {
  */
 export function periodeAwal() {
   const sekarang = new Date()
-  const tahunSekarang = sekarang.getFullYear()
   return {
     bulan: [sekarang.getMonth() + 1],
     tahun: [Math.max(sekarang.getFullYear(), 2026)],
@@ -89,11 +88,6 @@ export function keParameter(nilai) {
   if (!bulan || !bulan.length || !tahun || !tahun.length) {
     return { periode: 'semua' }
   }
-
-  const bulanMin = Math.min(...bulan)
-  const bulanMax = Math.max(...bulan)
-  const tahunMin = Math.min(...tahun)
-  const tahunMax = Math.max(...tahun)
 
   const selesaiDari = `${tahun[0]}-${String(bulan[0]).padStart(2, '0')}-01`
   const selesaiSampai =

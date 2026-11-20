@@ -574,7 +574,7 @@ export default function AdminUsers() {
                 value={kataSandi}
                 onChange={(e) => setKataSandi(e.target.value)}
                 className={cn('input', errorSandi && 'input-error')}
-                placeholder="misalnya banyuwangi123"
+                placeholder="misalnya PasswordKuat123"
                 autoComplete="new-password"
               />
             </Field>

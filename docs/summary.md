@@ -1,6 +1,6 @@
 # summary.md
 
-Komang SAC — Ringkasan Proyek Sistem Manajemen Cuci Sepatu
+Cuci Sepatu — Ringkasan Proyek Sistem Manajemen Cuci Sepatu
 
 ## Ringkasan
 

@@ -1,7 +1,7 @@
 # Repo Privat untuk File Sensitif
 
 > **Status: SUDAH DIIJALANKAN.** Repo privatnya ada di
-> <https://github.com/mhmmd-naufl/Komang_SAC_privat> (visibility **Private**),
+> <https://github.com/<owner>/<repo>_privat> (visibility **Private**),
 > folder `privat/` sudah dibuat, dan backend sudah membaca `.env` dari sana.
 > Dokumen ini menjelaskan setup tersebut sekaligus cara memindahkannya ke
 > device baru.
@@ -18,7 +18,7 @@
   salah ketik, dan sering berakhir dengan secret yang lebih lemah dari
   seharusnya.
 
-Meanwhile repo publik `Komang_SAC` **wajib tetap publik** (untuk portofolio),
+Meanwhile repo publik `<repo>` **wajib tetap publik** (untuk portofolio),
 jadi kredensial tidak boleh masuk sana sama sekali.
 
 ## Solusi: repo kedua yang PRIVATE
@@ -27,9 +27,9 @@ Folder `privat/` di dalam project dijadikan **repo git terpisah** yang
 di-push ke repo GitHub dengan visibility **Private**.
 
 ```
-D:\Naufal\Komang SAC\
+D:\project\Cuci Sepatu\
 ├── .git/            → repo PUBLIK   (origin)
-├── privat/          → repo PRIVAT   (origin: Komang_SAC_privat)
+├── privat/          → repo PRIVAT   (origin: <repo>_privat)
 │   ├── .git/
 │   ├── .env           ← SUPABASE_SERVICE_ROLE_KEY, JWT_SECRET_KEY,
 │   │                    OPENROUTER_API_KEY, CLEANUP_TOKEN
@@ -75,8 +75,8 @@ tidak ada sama sekali.
 
 ### Fase 0 — Repo privat dibuat (manual)
 
-1. Dibuat di <https://github.com/new> — owner `mhmmd-naufl`, nama
-   `Komang_SAC_privat`
+1. Dibuat di <https://github.com/new> — owner `<owner>`, nama
+   `<repo>_privat`
 2. **Visibility: Private** ✅ (diverifikasi: API anonim balas 404, `ls-remote`
    dengan kredensial berhasil)
 3. Tidak dicentang "Add a README file", jadi push pertama bersih tanpa conflict
@@ -107,8 +107,8 @@ Init & push:
 cd privat
 git init -b main
 git add -A
-git commit -m "privat: kredensial & data lokal Komang SAC"
-git remote add origin https://github.com/mhmmd-naufl/Komang_SAC_privat.git
+git commit -m "privat: kredensial & data lokal Cuci Sepatu"
+git remote add origin https://github.com/<owner>/<repo>_privat.git
 git push -u origin main
 cd ..
 ```
@@ -166,9 +166,9 @@ Semua ✅ — dan `test_api.py` tetap 126 lulus, 0 gagal.
 ## Hasil Akhir: Migrasi ke Device Baru
 
 ```powershell
-git clone https://github.com/mhmmd-naufl/Komang_SAC.git
-cd Komang_SAC
-git clone https://github.com/mhmmd-naufl/Komang_SAC_privat.git privat
+git clone https://github.com/<owner>/<repo>.git
+cd <repo>
+git clone https://github.com/<owner>/<repo>_privat.git privat
 Copy-Item privat\frontend.env frontend\.env     # 1 perintah, isinya VITE_* saja
 ```
 

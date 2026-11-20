@@ -1,3 +1,4 @@
+import { BUSINESS_NAME } from '../../config'
 import { Copy, MessageCircle } from 'lucide-react'
 import { toast } from '../Toast'
 import Modal from '../AdminUi'
@@ -10,8 +11,8 @@ function tautanWa(nomor, pesan) {
 
 function susunPesan(akses) {
   const awal = akses.reset
-    ? 'Sandi akun Komang SAC kamu sudah diatur ulang.'
-    : 'Akun Komang SAC kamu sudah siap. Dengan akun ini kamu bisa melacak status sepatumu.'
+    ? `Sandi akun ${BUSINESS_NAME} kamu sudah diatur ulang.`
+    : `Akun ${BUSINESS_NAME} kamu sudah siap. Dengan akun ini kamu bisa melacak status sepatumu.`
   return [
     `Halo ${akses.nama},`,
     '',

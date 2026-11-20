@@ -1,12 +1,12 @@
 # data.md
-Data yang Perlu Disiapkan Oleh Partner Sebelum Memulai Project Komang SAC
+Data yang Perlu Disiapkan Oleh Partner Sebelum Memulai Project Cuci Sepatu
 
 File ini berisi seluruh master data yang harus diinputkan sebelum atau pada awal fase development (Phase 1). Data ini akan di-import ke database Supabase.
 
 ## 1. Identitas Usaha (1 baris)
-- `nama_usaha`: nama lengkap usaha (misal: `Komang SAC`)
+- `nama_usaha`: nama lengkap usaha (misal: `Cuci Sepatu`)
 - `wa_utama`: Nomor WhatsApp utama untuk notifikasi sistem (misal: `6281111111111`)
-- `email`: Email kontak (opsional, misal: `contact@komangsac.com`)
+- `email`: Email kontak (opsional, misal: `contact@cucisepatu.com`)
 - `alamat_usaha`: Alamat lengkap (misal: `Jl. Sudirman No. 5, Kota X`)
 - `komisi_teknisi`: Persentase komisi teknisi (standar: `50`)
 - `batas_stok_minimum`: Stok minimum sebelum muncul alarm (misal: `10`)
@@ -53,7 +53,7 @@ File ini berisi seluruh master data yang harus diinputkan sebelum atau pada awal
 | Brush Besar | alat | 20 | pcs | 5 | Distro Alat | 3000 |
 
 ## 5. Profil Admin
-- `full_name`: Nama pemilik/atasan (misal: `Komang`)
+- `full_name`: Nama pemilik/atasan (misal: `Nama Pemilik`)
 - `wa_admin`: Nomor WA admin (bisa sama dengan wa_utama atau berbeda)
 
 **Catatan Penting:**

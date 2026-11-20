@@ -1,11 +1,11 @@
-# prd.md (Product Requirements Document) — Komang SAC
+# prd.md (Product Requirements Document) — Cuci Sepatu
 
 > Status per Oktober 2026. Dokumen ini describing **kebutuhan**; status implementasi
 > nyata ada di `plan.md`. Yang bertanda ✅ sudah ada di kode, yang belum ditandai begitu.
 
 ## 1. Product Overview
 
-**Komang SAC** adalah sistem manajemen bisnis cuci sepatu berbasis web. Setiap titip
+**Cuci Sepatu** adalah sistem manajemen bisnis cuci sepatu berbasis web. Setiap titip
 sepatu menghasilkan satu transaksi yang bisa dilacak pelanggan dari statuses
 **Diterima → Diproses → Diperiksa → Selesai → Siap diambil**, sekaligus menjadi data
 untuk laporan pendapatan, komisi teknisi, dan monitoring stok bahan.
@@ -33,7 +33,7 @@ tanpa kartu kredit). Tidak ada layanan berbayar yang wajib aktif.
   (`GET /api/sepatu?aktif_only=true`).
 * ✅ **Booking 2 langkah** — pilih treatment, drop point, metode bayar, dan tulis
   **catatan untuk teknisi** (`POST /api/transaksi`).
-* ✅ **Nomor tracking** — tiap transaksi dapat kode `KS-XXXXXX` (huruf ambigu
+* ✅ **Nomor tracking** — tiap transaksi dapat kode `TRX-XXXXXX` (huruf ambigu
   I/O/0/1 sengaja tidak dipakai supaya mudah dibaca/dibacakan lewat telepon).
 * ✅ **Cek status tanpa akun** — `GET /api/transaksi/tracking/{kode}` menampilkan
   progres, catatan yang ditulis pelanggan, lokasi pengambilan, dan tombol kabari admin.
@@ -44,7 +44,7 @@ tanpa kartu kredit). Tidak ada layanan berbayar yang wajib aktif.
 ### 3.2 Admin
 
 * ✅ **Auth JWT** — `POST /api/auth/login`, `POST /api/auth/register`, `GET /api/auth/me`,
-  `POST /api/auth/set-password`. Password di-hash PBKDF2-SHA256 (200.000 iterasi).
+  `POST /api/auth/set-password`. Password di-hash Argon2id (hash PBKDF2 lama tetap diterima).
 * ✅ **Dashboard** — `GET /api/stats/admin`: shoes washed, total pendapatan, jumlah
   transaksi, komisi per teknisi, sebaran status, dan daftar stok menipis.
 * ✅ **CRUD master sepatu** — merk, model, `harga_cuci`, `jenis_treatment`,
@@ -102,8 +102,8 @@ tanpa kartu kredit). Tidak ada layanan berbayar yang wajib aktif.
 * **Palet hanya biru & putih.** Netral `slate`, primer `blue`, sukses `emerald`,
   peringatan `amber`, bahaya `rose`. **Tidak ada indigo.**
 * **Bahasa UI Indonesia.**
-* **Keamanan** — ✅ JWT + PBKDF2; ⬜ RLS Supabase masih belum aktif (lihat catatan di
-  `schema.sql`), ⬜ belum ada rate limiting.
+* **Keamanan** — ✅ JWT + Argon2id; ✅ RLS Supabase aktif di semua tabel lewat `rls.sql`;
+  ✅ rate limiting per endpoint.
 
 ## 6. Out of Scope
 
@@ -130,5 +130,5 @@ DDL lengkap: `schema.sql` (instalasi baru) · `migrate.sql` (database yang sudah
 
 ---
 
-* Sumber: kesepakatan bersama klien Komang SAC. Lihat `summary.md` untuk ringkasan
+* Sumber: kesepakatan bersama klien Cuci Sepatu. Lihat `summary.md` untuk ringkasan
 bisnisnya dan `data.md` untuk format data master dari Google Form.*

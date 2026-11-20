@@ -1,4 +1,4 @@
-# Dokumen Serah Terima — Komang SAC
+# Dokumen Serah Terima — Cuci Sepatu
 
 > **Sistem Manajemen Cuci Sepatu**  
 > Full-stack: Python (FastAPI) + React (Vite) + Supabase (PostgreSQL)
@@ -39,7 +39,7 @@
 ```bash
 # 1. Clone repo
 git clone <repo-url>
-cd KomangSAC
+cd CuciSepatu
 
 # 2. Setup virtual environment
 python -m venv .venv
@@ -123,7 +123,7 @@ python manage_users.py reset <no-hp> "PasswordBaru"
 ## 6. Struktur Folder
 
 ```
-KomangSAC/
+CuciSepatu/
 ├── main.py               # Backend FastAPI
 ├── analytics.py          # Ringkasan AI + fallback
 ├── bootstrap_admin.py    # Setup password admin
@@ -161,7 +161,7 @@ SUPABASE_SERVICE_ROLE_KEY=...
 JWT_SECRET_KEY=<string-acak>
 OPENROUTER_API_KEY=...          # Opsional (untuk AI summary)
 OPENROUTER_MODELS=...           # Opsional
-BUSINESS_NAME=Komang SAC
+BUSINESS_NAME=Cuci Sepatu
 BUSINESS_PHONE=081234567890
 BUSINESS_HOURS=09.00-20.00 WIB
 ACCEPTED_PAYMENTS=tunai,transfer,qris

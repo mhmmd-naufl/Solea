@@ -2,14 +2,15 @@
 Sekali jalan: set password untuk akun admin (atau buat admin baru).
 
 Cara pakai:
-    python bootstrap_admin.py                    # pakai default: 628980570911 / admin123
-    python bootstrap_admin.py 628980570911 "PasswordKuat123"
+    python bootstrap_admin.py                    # nomor dari ADMIN_PHONE, password acak
+    python bootstrap_admin.py 6280000000000 "PasswordKuat123"
 
 Setelah selesai, hapus password ini dari catatan publik & ganti lagi dari UI.
 """
 
 import sys
 import os
+import secrets
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -19,8 +20,11 @@ from main import supabase, hash_password, normalize_phone, get_now_iso  # noqa: 
 
 
 def main() -> None:
-    phone = normalize_phone(sys.argv[1] if len(sys.argv) > 1 else "628980570911")
-    password = sys.argv[2] if len(sys.argv) > 2 else "admin123"
+    phone = normalize_phone(
+        sys.argv[1] if len(sys.argv) > 1 else os.getenv("ADMIN_PHONE", "6280000000000")
+    )
+    # Tanpa argumen, buat password acak yang kuat (jangan pakai "admin123").
+    password = sys.argv[2] if len(sys.argv) > 2 else secrets.token_urlsafe(12)
 
     if len(password) < 6:
         raise SystemExit("Password minimal 6 karakter.")
@@ -31,10 +35,11 @@ def main() -> None:
             {"password_hash": hash_password(password), "is_verified": True}
         ).eq("phone", phone).execute()
         print(f"Password diperbarui untuk {existing.data[0]['full_name']} ({phone}).")
+        print(f"Password baru: {password}")
     else:
         supabase.from_("profiles").insert(
             {
-                "full_name": "Admin Komang SAC",
+                "full_name": os.getenv("ADMIN_NAME", "Admin"),
                 "phone": phone,
                 "password_hash": hash_password(password),
                 "role": "admin",

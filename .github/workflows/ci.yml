@@ -66,6 +66,16 @@ jobs:
       - name: Cek sintaks semua file Python
         run: python -m py_compile main.py seed_dummy.py bootstrap_admin.py check_schema.py check_auth.py test_api.py manage_users.py
 
+      # py_compile hanya cek sintaks per file. Import main akan memuat semua
+      # router dan mendeteksi import melingkar / nama yang salah setelah split.
+      - name: Smoke test import aplikasi
+        env:
+          SUPABASE_URL: https://ci-smoke-test.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ci-dummy-service-role-key-untuk-smoke-test-123456
+          JWT_SECRET_KEY: ci-dummy-jwt-secret-untuk-smoke-test-1234567890
+        run: |
+          python -c "import main; print(f'{len(main.app.routes)} route terdaftar'); assert len(main.app.routes) >= 55, 'Jumlah route tidak sesuai'"
+
       - name: Pastikan tidak ada secret yang ter-commit
         run: |
           if git ls-files --error-unmatch .env >/dev/null 2>&1; then

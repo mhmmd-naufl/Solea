@@ -1,4 +1,4 @@
-# plan.md (Development Roadmap) — Komang SAC
+# plan.md (Development Roadmap) — Cuci Sepatu
 
 Status per Oktober 2026. `[x]` sudah ada di kode · `[ ]` belum.
 
@@ -15,14 +15,14 @@ Status per Oktober 2026. `[x]` sudah ada di kode · `[ ]` belum.
 
 ## Phase 1: Database — ✅
 
-- [x] Proyek Supabase dibuat (`cssajztordwhsqaonzgn`)
+- [x] Proyek Supabase dibuat (isi `SUPABASE_URL` di `.env`)
 - [x] 5 tabel: `profiles`, `shoes`, `drop_points`, `transactions`, `stock`
 - [x] Kolom `jenis_treatment` + `keterangan_treatment` di `shoes`
 - [x] Kolom `catatan_konsumen` + `tech_commission` di `transactions`
 - [x] Trigger auto-update `transactions.updated_at`
 - [x] `schema.sql` (instalasi baru) & `migrate.sql` (DB lama) — ✅ ditulis
 - [ ] Seed `shoes` dari price list klien (**menunggu data dari Excel**)
-- [ ] RLS + policy Supabase (**WAJIB sebelum deploy publik**)
+- [x] RLS via `rls.sql` — aktif di keenam tabel, anon/authenticated ditolak
 - [x] Hapus foto otomatis 7 hari — endpoint `/internal/cleanup-fotos` + cron
       GitHub Actions (Supabase free tier tidak punya TTL bawaan)
 
@@ -30,7 +30,7 @@ Status per Oktober 2026. `[x]` sudah ada di kode · `[ ]` belum.
 
 - [x] `main.py` — CRUD `sepatu`, `transaksi`, `users`, `drop-points`, `stock`
 - [x] `GET /health` + `GET /`
-- [x] Auth JWT: login, register, me, set-password (PBKDF2-SHA256)
+- [x] Auth JWT: login, register, me, set-password (Argon2id)
 - [x] `GET /api/transaksi/tracking/{kode}` untuk cek status publik
 - [x] `GET /api/stats/admin` untuk dashboard
 - [x] Validasi `photo_after` wajib sebelum status Selesai/Siap diambil
@@ -73,7 +73,7 @@ Status per Oktober 2026. `[x]` sudah ada di kode · `[ ]` belum.
 - [ ] Isi `.env` backend (JWT_SECRET acak)
 - [ ] Deploy frontend ke Vercel + set `VITE_API_BASE_URL`
 - [ ] Jalankan `bootstrap_admin.py`
-- [ ] **Aktifkan RLS sebelum dibuka ke publik**
+- [ ] **Jalankan `rls.sql` di Supabase sebelum dibuka ke publik**
 - [ ] Import data master dari Excel klien
 
 ---
@@ -82,7 +82,7 @@ Status per Oktober 2026. `[x]` sudah ada di kode · `[ ]` belum.
 
 | Risiko | Mitigasi |
 |---|---|
-| Anon key bocor | RLS belum aktif — **wajib** diaktifkan sebelum deploy |
+| Anon key bocor | RLS aktif di semua tabel via `rls.sql`; backend saja yang pakai service-role |
 | Free tier penuh | Kuota 1 GB storage ≈ 500–1000 foto, jadi TTL 7–30 hari wajib |
 | Admin lupa ganti password awal | `bootstrap_admin.py` + arahan ganti setelah login pertama |
 | `JWT_SECRET` bawaan | Ganti lewat `.env` sebelum deploy |

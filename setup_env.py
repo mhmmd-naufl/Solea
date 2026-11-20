@@ -159,11 +159,11 @@ def _pastikan_folder_project() -> None:
     ada = [p for p in penanda if os.path.exists(p)]
     if len(ada) < 2:
         sys.exit(
-            "Folder ini bukan root project Komang SAC.\n"
+            "Folder ini bukan root project Cuci Sepatu.\n"
             f"  Yang ditemukan di sini : {ada or '(tidak ada satu pun)'}\n"
             "  Yang dicari            : main.py, requirements.txt, frontend/\n\n"
             "  Pindah dulu ke folder project, lalu jalankan ulang:\n"
-            "      cd \"D:\\Naufal\\Komang SAC\"\n"
+            "      cd \"D:\\project\\cuci-sepatu\"\n"
             "      .venv\\Scripts\\python.exe setup_env.py"
         )
 
@@ -188,7 +188,7 @@ def _tulis_nilai(isian: str, kunci: str, nilai: str) -> str:
 
 def main() -> None:
     print("=" * 62)
-    print("  SETUP .env -- Komang SAC")
+    print("  SETUP .env -- Cuci Sepatu")
     print("=" * 62)
     print()
 

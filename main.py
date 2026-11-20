@@ -12,6 +12,8 @@ from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 import limits
 from pydantic import BaseModel, Field, model_validator, BeforeValidator
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerifyMismatchError
 from typing import Optional, List, Callable, Annotated
 from supabase import create_client, Client, ClientOptions
 import httpx
@@ -20,6 +22,7 @@ import math
 from dotenv import load_dotenv
 
 import analytics
+from config import APP_ENV, BUSINESS_NAME, TRACKING_PREFIX
 
 
 def _waktu_utc(value):
@@ -68,7 +71,6 @@ load_dotenv(os.path.join(_BASE_DIR, "privat", ".env"), override=False)
 # --- KONFIGURASI ---
 # Semua dibaca dari .env (lihat .env.example). Tidak ada fallback hardcode
 # untuk kunci/API key -- salah konfigurasi harus gagal cepat, bukan diam-diam.
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://cssajztordwhsqaonzgn.supabase.co")
 
 
 def _is_placeholder(value: Optional[str]) -> bool:
@@ -82,12 +84,20 @@ def _is_placeholder(value: Optional[str]) -> bool:
     return any(h in v.lower() for h in hints)
 
 
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip()
+if _is_placeholder(SUPABASE_URL):
+    raise RuntimeError(
+        "SUPABASE_URL belum diisi dengan benar di .env.\n"
+        "  Ambil dari Supabase Dashboard > Project Settings > API > Project URL."
+    )
+
+
 def get_supabase_key() -> str:
     """
     Backend memakai service-role key.
 
     Alasannya: service_role MELALUI RLS dan boleh menulis, sedangkan anon
-    key tidak boleh menulis tabel yang RLS-nya aktif (saat ini `expenses`).
+    key tidak bisa membaca atau menulis tabel yang RLS-nya aktif (semua tabel).
     Kunci ini hanya boleh ada di backend -- jangan pernah ditaruh di
     frontend / .env frontend.
     """
@@ -137,7 +147,7 @@ supabase: Client = create_client(
     options=ClientOptions(httpx_client=_http_supabase),
 )
 
-app = FastAPI(title="Komang SAC API", version="0.1.0")
+app = FastAPI(title=f"{BUSINESS_NAME} API", version="0.1.0")
 
 # ==========================================
 # RATE LIMITING (anti brute-force)
@@ -246,15 +256,23 @@ def _asal_cors() -> list[str]:
     """
     Daftar origin frontend yang boleh memanggil API ini.
 
-    Produksi WAJIB mengisi FRONTEND_ORIGINS di environment Railway, contoh:
-        FRONTEND_ORIGINS=https://komang-sac.pages.dev,https://komangsac.com
-    Tanpa itu, fallback "*" menutup lubang kecemasan: header CORS tetap
-    lulus untuk semua domain. Layanan yang serius jangan dibiarkan terbuka
-    begitu saja, meski insistensi blocking adalah titik perhatian lain.
+    Produksi (APP_ENV=production) WAJIB mengisi FRONTEND_ORIGINS, contoh:
+        FRONTEND_ORIGINS=https://your-app.pages.dev,https://your-app.example.com
+    Mode development boleh memakai fallback "*" supaya npm run dev langsung
+    jalan. Di produksi fallback itu sengaja DIMATIKAN: lebih baik backend
+    gagal start daripada diam-diam menerima request dari origin mana pun.
     """
     env = os.getenv("FRONTEND_ORIGINS", "")
     daftar = [a.strip().rstrip("/") for a in env.split(",") if a.strip()]
-    return daftar or ["*"]
+    if daftar:
+        return daftar
+    if APP_ENV in ("production", "prod"):
+        raise RuntimeError(
+            "FRONTEND_ORIGINS wajib diisi saat APP_ENV=production.\n"
+            "  Contoh: FRONTEND_ORIGINS=https://app.example.com\n"
+            "  Tanpa ini backend membuka CORS untuk semua origin."
+        )
+    return ["*"]
 
 
 app.add_middleware(
@@ -280,8 +298,11 @@ security = HTTPBearer(auto_error=False)
 # PYDANTIC MODELS (VALIDASI DATA)
 # ==========================================
 
+# Nama bucket foto transaksi (dipakai router transaksi & internal).
+PHOTO_BUCKET = "transaksi-photos"
+
 # --- Shoes (Master Layanan / Price List) ---
-# POLA treatment sengaja TIDAK memakai enum. Daftar layanan Komang SAC
+# POLA treatment sengaja TIDAK memakai enum. Daftar layanan (treatment)
 # (Deep Cleaning, Unyellowing, Repaint, Reglue, Bag Cleaning, Helmet, ...)
 # terus bertambah dan admin harus bisa menambah yang baru dari panel tanpa
 # perlu ALTER TABLE. Yang dijaga hanya bentuknya: huruf/angka/spasi, maks 40.
@@ -378,10 +399,21 @@ class TransactionBase(BaseModel):
     tech_id: Optional[str] = None
     drop_point_id: Optional[str] = None
     harga: Optional[int] = None
+    # JENIS sepatu yang titip (Sneakers, Canvas, Leather, ...). Wajib dipilih
+    # konsumen sebelum order -- divalidasi manual di create_transaksi supaya
+    # pesannya bisa berbahasa manusia (Field(...) untuk required menghasilkan
+    # 422 generik yang sulit dibaca di UI).
+    jenis_sepatu: Optional[str] = None
+    # NAMA sepatu yang titip (merk/tipe, cth. "Nike Air Force 1"). Wajib
+    # sebelahan dengan jenis_sepatu.
+    nama_sepatu: Optional[str] = None
     catatan_konsumen: Optional[str] = None
     # Metode bayar pilihan konsumen saat booking (tunai/transfer/qris).
     # Divalidasi terhadap ACCEPTED_PAYMENTS saat create.
     payment_method: Optional[str] = None
+    # Diisi adapter payments.py saat gateway pembayaran aktif.
+    payment_reference: Optional[str] = None
+    payment_status: Optional[str] = None
     # "Benang" untuk booking multi-pasang: beberapa transaksi yang dibuat
     # dalam satu sesi booking berbagi grup_id yang sama. NULL untuk booking
     # tunggal. Dibuat frontend per batch submit.
@@ -434,7 +466,7 @@ class StaffBrief(BaseModel):
 
 class TransactionResponse(TransactionBase):
     id: str
-    # Nomor tracking yang dilihat konsumen (KS-XXXXXX). Wajib ada di response
+    # Nomor tracking yang dilihat konsumen (TRX-XXXXXX). Wajib ada di response
     # karena teknisi dan admin butuh menautkannya ke halaman status publik.
     kode: Optional[str] = None
     status: str
@@ -444,6 +476,10 @@ class TransactionResponse(TransactionBase):
     # preferensi tampilan -- teknisi tidak bisa membacanya lewat DevTools.
     harga: Optional[int] = None
     tech_commission: Optional[int] = None
+    # Potongan harga yang ditetapkan admin lewat endpoint finalisasi. NULL =
+    # belum pernah diatur (diperlakukan 0). Ikut disembunyikan dari teknisi
+    # bersama harga karena keduanya sama-sama angka buku kas.
+    diskon: Optional[int] = None
     # Hanya terisi untuk admin dan drop point (lihat _sertakan_kontak).
     customer: Optional[CustomerContact] = None
     # Nama sepatu dan teknisi, hasil embed PostgREST. Tanpa ini tabel admin
@@ -692,15 +728,21 @@ def normalize_phone(phone: str) -> str:
         p = "62" + p
     return p
 
+_HASHER_SANDI = PasswordHasher()  # Argon2id — tahan serangan GPU
+
 def hash_password(password: str) -> str:
-    """PBKDF2-SHA256, tanpa dependency tambahan."""
-    salt = secrets.token_hex(16)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), 200_000)
-    return f"pbkdf2_sha256$200000${salt}${digest.hex()}"
+    """Argon2id untuk password baru."""
+    return _HASHER_SANDI.hash(password)
 
 def verify_password(password: str, stored: Optional[str]) -> bool:
+    """Verifikasi Argon2id baru atau PBKDF2 lama (kompatibel selama migrasi)."""
     if not stored:
         return False
+    if stored.startswith("$argon2"):
+        try:
+            return _HASHER_SANDI.verify(stored, password)
+        except (VerifyMismatchError, InvalidHashError, ValueError):
+            return False
     try:
         _, iterations, salt, expected = stored.split("$")
         digest = hashlib.pbkdf2_hmac(
@@ -711,9 +753,9 @@ def verify_password(password: str, stored: Optional[str]) -> bool:
         return False
 
 def generate_tracking_code() -> str:
-    """Nomor tracking singkat yang dilihat konsumen, cth. KS-7F3K9Q"""
+    """Nomor tracking singkat yang dilihat konsumen, cth. TRX-7F3K9Q"""
     alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # tanpa I, O, 0, 1
-    return "KS-" + "".join(secrets.choice(alphabet) for _ in range(6))
+    return TRACKING_PREFIX + "".join(secrets.choice(alphabet) for _ in range(6))
 
 def create_access_token(user_id: str, role: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -752,7 +794,7 @@ def require_role(*roles: str):
 # Field yang TIDAK boleh keluar ke teknisi. Aturan bisnis: teknisi fokus
 # pada pekerjaan, tidak perlu melihat harga jual maupun komisi. disembunyikan
 # di backend (bukan cuma di frontend) supaya tidak bisa dibaca lewat DevTools.
-_FIELD_TEKAN_HIDDEN = ("harga", "tech_commission")
+_FIELD_TEKAN_HIDDEN = ("harga", "tech_commission", "diskon")
 
 
 def _sembunyikan_biaya(baris: list[dict], user: dict) -> list[dict]:
@@ -1223,7 +1265,7 @@ ACCEPTED_PAYMENTS = sorted({
 
 @app.get("/", tags=["Root"])
 def read_root():
-    return {"message": "Selamat datang di Komang SAC API", "status": "aktif", "version": "0.1.0"}
+    return {"message": f"Selamat datang di {BUSINESS_NAME} API", "status": "aktif", "version": "0.1.0"}
 
 @app.get("/api/config", tags=["Config"])
 def public_config():
@@ -1235,7 +1277,7 @@ def public_config():
     (UI menampilkan 3 metode padahal .env hanya mengizinkan 2).
     """
     return {
-        "business_name": os.getenv("BUSINESS_NAME", "Komang SAC"),
+        "business_name": BUSINESS_NAME,
         "business_phone": os.getenv("BUSINESS_PHONE", ""),
         "business_hours": os.getenv("BUSINESS_HOURS", "09.00-20.00 WIB"),
         "accepted_payments": ACCEPTED_PAYMENTS,
@@ -1254,116 +1296,6 @@ def health_check():
 # ==========================================
 # AUTH
 # ==========================================
-
-@app.post("/api/auth/register", response_model=LoginResponse, status_code=status.HTTP_201_CREATED, tags=["Auth"])
-@limiter.limit("3/hour")
-def register(request: Request, payload: RegisterRequest):
-    """Registrasi mandiri — selalu jadi role 'customer'."""
-    return _create_user_with_password(
-        full_name=payload.full_name.strip(),
-        phone=payload.phone,
-        password=payload.password,
-        role="customer",
-    )
-
-@app.post("/api/auth/login", response_model=LoginResponse, tags=["Auth"])
-@limiter.limit("5/minute")
-def login(request: Request, payload: LoginRequest):
-    phone = normalize_phone(payload.phone)
-    result = supabase.from_("profiles").select("*").eq("phone", phone).execute()
-    if not result.data:
-        # Cari juga dengan format 0...
-        result = supabase.from_("profiles").select("*").eq("phone", payload.phone.strip()).execute()
-    if not result.data:
-        raise HTTPException(401, "Nomor WhatsApp tidak terdaftar")
-
-    user = result.data[0]
-    if not verify_password(payload.password, user.get("password_hash")):
-        raise HTTPException(401, "Password salah")
-
-    token = create_access_token(user["id"], user["role"])
-    return {
-        "token": token,
-        "user": {
-            "id": user["id"],
-            "full_name": user["full_name"],
-            "phone": user["phone"],
-            "role": user["role"],
-            "is_verified": user.get("is_verified", False),
-        },
-    }
-
-@app.get("/api/auth/me", response_model=UserPublic, tags=["Auth"])
-def me(user: dict = Depends(get_current_user)):
-    return {
-        "id": user["id"],
-        "full_name": user["full_name"],
-        "phone": user["phone"],
-        "role": user["role"],
-        "is_verified": user.get("is_verified", False),
-    }
-
-
-class PasswordChange(BaseModel):
-    password_lama: str = Field(..., min_length=1)
-    password_baru: str = Field(..., min_length=6)
-
-
-@app.post("/api/auth/change-password", tags=["Auth"])
-@limiter.limit("5/minute")
-def change_password(request: Request, payload: PasswordChange, user: dict = Depends(get_current_user)):
-    """Ganti sandi sendiri. Wajib menyertakan sandi lama."""
-    # Sengaja 400, bukan 401: 401 membuat api.js men-logout user otomatis.
-    if not verify_password(payload.password_lama, user.get("password_hash")):
-        raise HTTPException(400, "Sandi saat ini salah")
-    if payload.password_baru == payload.password_lama:
-        raise HTTPException(400, "Sandi baru harus berbeda dari sandi saat ini")
-    supabase.from_("profiles").update(
-        {"password_hash": hash_password(payload.password_baru)}
-    ).eq("id", user["id"]).execute()
-    return {"detail": "Sandi berhasil diganti"}
-
-class PasswordReset(BaseModel):
-    """Password baru untuk pengguna lain. Panjang minimum sama dengan register."""
-    password: str = Field(..., min_length=6)
-
-
-@app.post("/api/users/{user_id}/reset-password", response_model=UserPublic, tags=["Users"])
-def admin_reset_password(
-    user_id: str,
-    payload: PasswordReset,
-    _: dict = Depends(require_role("admin")),
-):
-    """
-    Admin mengganti password pengguna lain.
-
-    Ini jalur pemulihan akses yang paling sederhana dan gratis: konsumen yang
-    lupa password cukup menelepon admin, tanpa alur email atau reset-link yang
-    butuh layanan tambahan. Password lama tidak dibaca, tidak divalidasi, dan
-    tidak pernah dikirim balik -- hanya hash barunya yang ditulis.
-
-    Beda dengan /api/auth/set-password (self-service), endpoint ini sengaja
-    admin-only: tanpa itu siapa pun yang tahu UUID orang lain bisa mengambil
-    alih akunnya.
-    """
-    result = (
-        supabase.from_("profiles")
-        .update({"password_hash": hash_password(payload.password)})
-        .eq("id", user_id)
-        .execute()
-    )
-    if not result.data:
-        raise HTTPException(404, "Pengguna tidak ditemukan")
-
-    u = result.data[0]
-    return {
-        "id": u["id"],
-        "full_name": u["full_name"],
-        "phone": u["phone"],
-        "role": u["role"],
-        "is_verified": u.get("is_verified", False),
-    }
-
 
 def _create_user_with_password(full_name: str, phone: str, password: str, role: str):
     normalized = normalize_phone(phone)
@@ -1399,1836 +1331,60 @@ def _create_user_with_password(full_name: str, phone: str, password: str, role: 
 # STATS (Dashboard Admin)
 # ==========================================
 
-STATUS_AWAL = ("Diterima", "Diproses", "Diperiksa")
 
-
-@app.get("/api/stats/admin", response_model=StatsResponse, tags=["Stats"])
-def admin_stats(
-    periode: str = "semua",
-    bulan: Optional[int] = None,
-    tahun: Optional[int] = None,
-    _: dict = Depends(require_role("admin")),
-):
-    """
-    Statistik untuk dashboard admin, dibatasi satu periode.
-
-    Parameter `periode` menentukan resolusi grafik sekaligus labelnya:
-      - `bulan&bulan=10&tahun=2026` -> satu bulan, grafik per HARI
-      - `tahun&tahun=2026`         -> satu tahun, grafik per BULAN
-      - `semua`                     -> seluruh riwayat, grafik per BULAN
-
-    Default-nya `semua`, jadi endpoint ini tetap jalan dipanggil tanpa
-    parameter apa pun. Kalau periodenya bukan `semua`, `tahun` (dan `bulan`
-    untuk periode bulan) wajib diisi -- kalau tidak, backend menolak dengan
-    400, bukan menebak periode diam-diam.
-
-    Angka omzet, Shoes washed, dan komisi teknisi dihitung dari transaksi yang
-    SUDAH SELESAI (`selesai_at` ada dan berada di dalam periode). Transaksi yang
-    masih di tahap awal sengaja tidak dihitung -- nilainya belum jadi
-    pendapatan, dan menghitungnya membuat dashboard terlihat lebih untung
-    daripada kenyataannya. Jumlahnya tetap dilaporkan di `masih_jalan`.
-
-    Filter periode diterapkan di PostgREST, bukan di Python. Kalau difilter
-    setelah data ditarik semua, angka untuk satu bulan tetap benar tapi
-    permintaan ke database tetap sebesar seluruh riwayat.
-    """
-    p = _parse_periode(periode, bulan, tahun)
-
-    query = supabase.from_("transactions").select(
-        "harga, tech_commission, tech_id, status"
-    )
-    query = _saring_selesai(query, p["mulai"], p["selesai"])
-    trx = query.execute().data or []
-
-    techs = (
-        supabase.from_("profiles")
-        .select("id, full_name")
-        .eq("role", "technician")
-        .execute().data or []
-    )
-
-    per_status: dict = {}
-    by_tech: dict = {}
-    pendapatan = 0
-    komisi_total = 0
-
-    for row in trx:
-        status = row.get("status") or ""
-        per_status[status] = per_status.get(status, 0) + 1
-        pendapatan += row.get("harga") or 0
-        komisi_total += row.get("tech_commission") or 0
-
-        tech_id = row.get("tech_id")
-        if tech_id:
-            agg = by_tech.setdefault(tech_id, {"jumlah": 0, "komisi": 0})
-            agg["jumlah"] += 1
-            agg["komisi"] += row.get("tech_commission") or 0
-
-    # Berapa yang masih dikerjakan, di luar periode. Query terpisah karena
-    # `selesai_at` masih NULL untuk semua baris ini, jadi satu filter `in_`
-    # sudah cukup tanpa perlu menyaring tanggal.
-    belum = (
-        supabase.from_("transactions")
-        .select("id", count="exact")
-        .in_("status", list(STATUS_AWAL))
-        .execute()
-    )
-    # PostgREST mengembalikan `count` terpisah dari `data`. Kalau barisnya
-    # kosong tapi count ada, itu sahih (0 baris) -- jadi andalkan `count`,
-    # bukan `data`.
-    masih_jalan = belum.count or 0
-
-    # Pengeluaran operasional di periode yang sama. Kolomnya DATE, jadi
-    # dibandingkan sebagai tanggal: `mulai` inklusif, `selesai` eksklusif --
-    # sama persis dengan konvensi selesai_at supaya tidak ada hari batas
-    # yang dihitung dua kali atau tidak sama sekali.
-    exp_query = supabase.from_("expenses").select("jumlah")
-    if p["mulai"]:
-        exp_query = exp_query.gte("tanggal", p["mulai"].date().isoformat())
-    if p["selesai"]:
-        exp_query = exp_query.lt("tanggal", p["selesai"].date().isoformat())
-    total_pengeluaran = sum(e.get("jumlah") or 0 for e in (exp_query.execute().data or []))
-
-    # Legacy compatibility: transaksi yang statusnya sudah final tapi belum
-    # punya `selesai_at` tetap harus dihitung sebagai pekerjaan selesai untuk
-    # dashboard. Tanpa fallback ini, data riwayat tampak "hilang" meski sudah
-    # ada di database.
-    if trx:
-        for row in trx:
-            if row.get("status") in ("Selesai", "Siap diambil") and not row.get("selesai_at"):
-                row["selesai_at"] = row.get("created_at")
-
-    return {
-        "total_transaksi": len(trx),
-        "shoes_washed": sum(per_status.values()),
-        "total_pendapatan": pendapatan,
-        "total_teknisi": len(techs),
-        "per_teknisi": [
+def catat_audit(
+    aksi: str,
+    target_tipe: Optional[str] = None,
+    target_id: Optional[str] = None,
+    detail: Optional[dict] = None,
+    user: Optional[dict] = None,
+) -> None:
+    """Catat aksi sensitif. Gagal menulis TIDAK boleh menggagalkan endpoint."""
+    try:
+        supabase.from_("audit_log").insert(
             {
-                "id": t["id"],
-                "full_name": t["full_name"],
-                "jumlah_pekerjaan": by_tech.get(t["id"], {}).get("jumlah", 0),
-                "tech_commission": by_tech.get(t["id"], {}).get("komisi", 0),
+                "actor_id": user.get("id") if user else None,
+                "actor_nama": user.get("full_name") if user else None,
+                "aksi": aksi,
+                "target_tipe": target_tipe,
+                "target_id": str(target_id) if target_id else None,
+                "detail": detail or {},
+                "created_at": get_now_iso(),
             }
-            for t in techs
-        ],
-        "per_status": per_status,
-        "masih_jalan": masih_jalan,
-        "total_komisi": komisi_total,
-        "sisa_untuk_outlet": pendapatan - komisi_total,
-        "total_pengeluaran": total_pengeluaran,
-        "sisa_bersih": pendapatan - komisi_total - total_pengeluaran,
-        "periode": {
-            "periode": p["periode"],
-            "label": p["label"],
-            "granularitas": p["granularitas"],
-            "mulai": p["mulai"].isoformat() if p["mulai"] else None,
-            "selesai": p["selesai"].isoformat() if p["selesai"] else None,
-        },
-    }
+        ).execute()
+    except Exception as exc:
+        print(f"[AUDIT] Gagal mencatat {aksi}: {type(exc).__name__}: {exc}")
 
 
-class AnalyticsResponse(BaseModel):
-    """
-    Bentuk respons analytics.
+# ---------------------------------------------------------------------------
+# ROUTER — dipasang paling akhir supaya semua dependensi bersama di atas
+# sudah tersedia untuk di-import oleh modul-modul router.
+# ---------------------------------------------------------------------------
+from routers import (  # noqa: E402
+    audit,
+    auth,
+    stats,
+    sepatu,
+    transaksi,
+    internal,
+    payments,
+    users,
+    drop_points,
+    stock,
+    expenses,
+)
 
-    `ringkasan` dan `saran` adalah satu-satunya bagian yang boleh berasal dari
-    AI. `fakta` SELALU dihitung lokal di analytics.gather_facts, apa pun yang
-    terjadi pada pemanggilan OpenRouter -- grafik dan angka dashboard digambar
-    dari `fakta`, jadi tidak pernah berubah-ubah karena alasan bahasa.
-    """
-    ringkasan: str
-    saran: List[str] = Field(default_factory=list)
-    sumber: str = Field(..., description="'ai', 'fallback', atau 'error'")
-    model: Optional[str] = None
-    catatan: Optional[str] = None
-    fakta: dict
-
-
-@app.get("/api/dashboard", tags=["Dashboard"])
-def dashboard_summary(
-    periode: str = "semua",
-    bulan: Optional[int] = None,
-    tahun: Optional[int] = None,
-    _: dict = Depends(require_role("admin")),
+for _router in (
+    audit.router,
+    auth.router,
+    stats.router,
+    sepatu.router,
+    transaksi.router,
+    internal.router,
+    payments.router,
+    users.router,
+    drop_points.router,
+    stock.router,
+    expenses.router,
 ):
-    """Satu endpoint gabungan untuk ringkasan, tren, dan daftar yang perlu perhatian."""
-    p = _parse_periode(periode, bulan, tahun)
-    try:
-        facts = analytics.gather_facts(
-            supabase,
-            mulai=p["mulai"],
-            selesai=p["selesai"],
-            granularitas=p["granularitas"],
-            label_periode=p["label"],
-        )
-    except Exception as exc:  # noqa: BLE001
-        # Supabase terkadang memutus koneksi sementara; jangan membuat ASGI
-        # crash saat dashboard masih butuh menampilkan angka kosong yang jelas.
-        return {
-            "ringkasan": {
-                "total_transaksi": 0,
-                "shoes_washed": 0,
-                "total_pendapatan": 0,
-                "total_teknisi": 0,
-                "per_teknisi": [],
-                "per_status": {},
-                "masih_jalan": 0,
-                "total_komisi": 0,
-                "sisa_untuk_outlet": 0,
-                "periode": {
-                    "periode": p["periode"],
-                    "label": p["label"],
-                    "granularitas": p["granularitas"],
-                    "mulai": p["mulai"].isoformat() if p["mulai"] else None,
-                    "selesai": p["selesai"].isoformat() if p["selesai"] else None,
-                },
-            },
-            "per_teknisi": [],
-            "per_status": {},
-            "tren": [],
-            "stok_menipis": [],
-            "tertahan": [],
-            "catatan": f"Gagal menghitung dashboard: {type(exc).__name__}.",
-        }
-
-    ringkasan = {
-        "total_transaksi": facts.get("transaksi_periode", 0),
-        "shoes_washed": facts.get("transaksi_periode", 0),
-        "total_pendapatan": facts.get("omzet_periode", 0),
-        "total_teknisi": facts.get("jumlah_teknisi", 0),
-        "per_teknisi": [
-            {
-                "id": t.get("id"),
-                "full_name": t.get("full_name"),
-                "jumlah_pekerjaan": 0,
-                "tech_commission": 0,
-            }
-            for t in supabase.from_("profiles").select("id, full_name").eq("role", "technician").execute().data or []
-        ],
-        "per_status": facts.get("per_status", {}),
-        "masih_jalan": facts.get("transaksi_masih_jalan", 0),
-        "total_komisi": facts.get("komisi_periode", 0),
-        "sisa_untuk_outlet": facts.get("laba_outlet_periode", 0),
-        "periode": {
-            "periode": p["periode"],
-            "label": p["label"],
-            "granularitas": p["granularitas"],
-            "mulai": p["mulai"].isoformat() if p["mulai"] else None,
-            "selesai": p["selesai"].isoformat() if p["selesai"] else None,
-        },
-    }
-    return {
-        "ringkasan": ringkasan,
-        "per_teknisi": ringkasan["per_teknisi"],
-        "per_status": facts.get("per_status", {}),
-        "tren": facts.get("grafik", []),
-        "stok_menipis": facts.get("stok_kritis", []),
-        "tertahan": facts.get("pekerjaan_tertahan", []),
-    }
-
-
-@app.get("/api/analytics/summary", response_model=AnalyticsResponse, tags=["Analytics"])
-def analytics_summary(
-    periode: str = "semua",
-    bulan: Optional[int] = None,
-    tahun: Optional[int] = None,
-    pakai_ai: bool = True,
-    _: dict = Depends(require_role("admin")),
-):
-    """
-    Ringkasan + saran (AI atau fallback), disertai fakta untuk grafik.
-
-    Admin-only dengan sengaja: fakta di sini termasuk beban kerja per teknisi,
-    jadi tidak boleh bocor ke teknisi, drop point, atau konsumen.
-
-    Parameter periode sama seperti /api/stats/admin (lihat _parse_periode).
-    Granularitas grafik ikut mengikuti: satu bulan -> per hari, satu tahun ->
-    per bulan.
-
-    Kalau OpenRouter sedang tidak tersedia, endpoint ini tetap mengembalikan
-    ringkasan dan saran yang dihitung dari data langsung (sumber='fallback').
-    Frontend menampilkan catatan penyebabnya, jadi tidak pernah menampilkan
-    string kosong.
-
-    `pakai_ai=0` melewati pemanggilan AI sepenuhnya: respons cepat (hanya
-    query database) dan tetap membawa `fakta` untuk grafik. Frontend memakai
-    ini lebih dulu supaya grafik tidak ikut menunggu model bahasa.
-    """
-    p = _parse_periode(periode, bulan, tahun)
-    try:
-        return analytics.build_summary(
-            supabase,
-            mulai=p["mulai"],
-            selesai=p["selesai"],
-            granularitas=p["granularitas"],
-            label_periode=p["label"],
-            pakai_ai=pakai_ai,
-        )
-    except Exception as exc:  # noqa: BLE001
-        # Analytics tidak boleh menjatuhkan dashboard. Kembalikan facts kosong
-        # beserta pesan, supaya UI masih bisa menampilkan sesuatu yang jelas.
-        return {
-            "ringkasan": (
-                "Ringkasan otomatis belum bisa dihitung saat ini. "
-                "Data dashboard di bawah tetap bisa dibaca normal."
-            ),
-            "saran": [],
-            "sumber": "error",
-            "model": None,
-            "catatan": f"Gagal menghitung analytics: {type(exc).__name__}.",
-            "fakta": {},
-        }
-
-
-# ==========================================
-# CRUD SEPATU (SHOES) - Master Data & Price List
-# ==========================================
-
-def _rapikan_harga_master(data: dict, gabung: bool = False) -> dict:
-    """
-    Samakan `harga_cuci` dan `harga_min` supaya booking tidak pernah ambigu.
-
-    `harga_cuci` kolom yang lama dan masih dibaca endpoint lain. Kalau layanan
-    punya rentang, `harga_cuci` harus ikut jadi harga terendah -- kalau tidak,
-    satu layanan bisa tampil sebagai "Rp150.000" di katalog tapi dicatat
-    "Rp80.000" di transaksi.
-
-    `gabung=True` dipakai saat update: baris yang tidak dikirim frontend ikut
-    ikut diperhitungkan, jadi UPDATE parsial tidak merusak konsistensi.
-    """
-    if gabung:
-        if data.get("harga_max") is not None and data.get("harga_min") is None:
-            # Admin hanya mengisi batas atas -> harga awal = harga_cuci lama.
-            data["harga_min"] = data.get("harga_cuci")
-        if data.get("harga_min") is not None:
-            data["harga_cuci"] = data["harga_min"]
-        return data
-
-    if data.get("harga_max") is not None:
-        if data.get("harga_min") is None:
-            data["harga_min"] = data["harga_cuci"]
-        data["harga_cuci"] = data["harga_min"]
-    return data
-
-
-@app.post("/api/sepatu", response_model=ShoeResponse, status_code=status.HTTP_201_CREATED, tags=["Sepatu"])
-def create_sepatu(sepatu: ShoeCreate, _: dict = Depends(require_role("admin"))):
-    data = _rapikan_harga_master(sepatu.model_dump())
-    data["created_at"] = get_now_iso()
-    try:
-        result = supabase.from_("shoes").insert(data).execute()
-        if not result.data:
-            raise HTTPException(500, "Gagal menambah layanan")
-        return result.data[0]
-    except Exception as e:
-        raise HTTPException(500, f"Database error: {str(e)}")
-
-@app.get("/api/sepatu", response_model=List[ShoeResponse], tags=["Sepatu"])
-def list_sepatu(
-    response: Response,
-    aktif_only: bool = True,
-    cari_status: Optional[bool] = None,
-    q: Optional[str] = None,
-    kelompok: Optional[str] = None,
-    page: Optional[int] = None,
-    per_page: Optional[int] = None,
-):
-    """
-    Master layanan / price list. Tetap publik: daftar harga memang perlu dibaca
-    siapa saja, dan endpoint ini sudah terbuka sejak awal.
-
-    `kelompok` menyaring per grup katalog ("Cuci Sepatu", "Bag, Hat & Helmet",
-    "Repaint & Reglue") supaya tab di katalog publik cukup menarik satu grup
-    per request, bukan semua baris lalu dipilah di browser.
-
-    Dua filter status yang berbeda, sering tertukar:
-
-    - `aktif_only=true` (default) -> hanya yang aktif. Ini yang dipakai katalog
-      publik supaya layanan yang dinonaktifkan tidak bocor ke pelanggan.
-    - `cari_status=false` -> hanya yang NONAKTIF. Ini yang dipakai panel admin
-      supaya ia bisa menemukan layanan yang perlu dihidupkan kembali.
-      Kalau `cari_status` diisi, dia mengALAHKAN `aktif_only` -- jadi
-      `?cari_status=false` saja sudah cukup untuk mencari yang nonaktif.
-
-    Panel admin yang mau melihat semuanya mengirim keduanya: `aktif_only=false`
-    (supaya tidak ada filter) dan `cari_status` tidak diisi sama sekali.
-    Kalau `aktif_only` tidak dikirim, default True diam-diam menyembunyikan
-    layanan nonaktif -- persis yang tidak diinginkan di panel admin.
-    """
-    cari = _cari_teks(q)
-    grup = _kelompok_bersih(kelompok)
-
-    def bangun() -> object:
-        query = supabase.from_("shoes").select("*", count="exact")
-        # `cari_status` menang kalau keduanya diisi. Kalau difilter terpisah
-        # (aktif_only -> status=true, lalu cari_status -> status=false),
-        # PostgREST menyANDkan keduanya dan hasilnya selalu kosong --
-        # caller yang sudah menjelaskan status yang dicari tidak perlu juga
-        # mengirim `aktif_only`.
-        if cari_status is not None:
-            query = query.eq("status", cari_status)
-        elif aktif_only:
-            query = query.eq("status", True)
-        if grup:
-            query = query.eq("kelompok", grup)
-        # `merk` sekarang berisi nama layanan, jadi cari juga di keterangan:
-        # orang mengetik "white" atau "sol" dan berharapnya ketemu.
-        if cari:
-            query = query.or_(
-                ",".join(
-                    [
-                        _pola_ilike("merk", cari),
-                        _pola_ilike("model", cari),
-                        _pola_ilike("jenis_treatment", cari),
-                        _pola_ilike("keterangan_treatment", cari),
-                    ]
-                )
-            )
-        # kelompok dulu supaya grup katalog tidak tercampur antar tab, baru
-        # merk untuk mengurutkan isi grup. Baris tanpa kelompok (data lama)
-        # otomatis ada di paling akhir karena PostgREST Sort NULLS LAST.
-        return query.order("kelompok").order("merk")
-
-    if page is None:
-        return bangun().execute().data or []
-    return _halaman_berpaginan(bangun, page, per_page, response)
-
-@app.get("/api/sepatu/{sepatu_id}", response_model=ShoeResponse, tags=["Sepatu"])
-def get_sepatu(sepatu_id: str):
-    result = supabase.from_("shoes").select("*").eq("id", sepatu_id).execute()
-    if not result.data:
-        raise HTTPException(404, "Sepatu tidak ditemukan")
-    return result.data[0]
-
-@app.put("/api/sepatu/{sepatu_id}", response_model=ShoeResponse, tags=["Sepatu"])
-def update_sepatu(sepatu_id: str, sepatu: ShoeUpdate, _: dict = Depends(require_role("admin"))):
-    data = _rapikan_harga_master(sepatu.model_dump(exclude_unset=True), gabung=True)
-    if not data:
-        raise HTTPException(400, "Tidak ada data yang diupdate")
-    result = supabase.from_("shoes").update(data).eq("id", sepatu_id).execute()
-    if not result.data:
-        raise HTTPException(404, "Sepatu tidak ditemukan")
-    return result.data[0]
-
-@app.delete("/api/sepatu/{sepatu_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Sepatu"])
-def delete_sepatu(sepatu_id: str, _: dict = Depends(require_role("admin"))):
-    """
-    Hapus master sepatu.
-
-    Tidak bisa dihapus kalau masih dipakai transaksi: PostgreSQL menolak dengan
-    error foreign key (23503). Itu harus ditulis eksplisit, kalau tidak admin
-    melihat "berhasil" padahal datanya masih ada -- atau malah dapat 500 dengan
-    pesan bahasa Postgres yang tidak ada artinya buat kasir.
-    """
-    existing = supabase.from_("shoes").select("id,merk").eq("id", sepatu_id).execute()
-    if not existing.data:
-        raise HTTPException(404, "Sepatu tidak ditemukan")
-
-    dipakai = supabase.from_("transactions").select("id").eq("shoe_id", sepatu_id).execute().data or []
-    if dipakai:
-        raise HTTPException(
-            409,
-            f"Master ini masih dipakai {len(dipakai)} transaksi sehingga tidak bisa dihapus. "
-            "Nonaktifkan saja supaya hilang dari katalog tanpa merusak riwayat.",
-        )
-
-    supabase.from_("shoes").delete().eq("id", sepatu_id).execute()
-    return
-
-
-# ==========================================
-# CRUD TRANSAKSI (TRANSACTIONS) - Core Business
-# ==========================================
-
-@app.post("/api/transaksi", response_model=TransactionResponse, status_code=status.HTTP_201_CREATED, tags=["Transaksi"])
-@limiter.limit("10/hour")
-def create_transaksi(request: Request, transaksi: TransactionCreate, user: dict = Depends(get_current_user)):
-    """
-    Booking. Konsumen hanya boleh membuat atas namanya sendiri -- user_id
-    diambil dari token, bukan dari payload, supaya tidak bisa memesan
-    behalf orang lain. Admin/teknisi/drop point boleh behalf.
-    """
-    data = transaksi.model_dump()
-    if user["role"] == "customer":
-        data["user_id"] = user["id"]
-    else:
-        # Admin/teknisi/drop_point boleh create untuk user lain
-        if "user_id" not in data or data.get("user_id") is None:
-            raise HTTPException(400, "user_id wajib diisi untuk role non-customer")
-
-    # Harga selalu mengikuti master, jangan dikasih dari client.
-    shoe = (
-        supabase.from_("shoes")
-        .select("id, harga_cuci, harga_min, status")
-        .eq("id", data["shoe_id"])
-        .execute()
-    )
-    if not shoe.data:
-        raise HTTPException(400, "Layanan tidak ditemukan")
-    if not shoe.data[0]["status"]:
-        raise HTTPException(400, "Layanan ini sedang tidak tersedia")
-
-    # Layanan ber-harga-rentang (mis. Repaint 80.000-150.000) dicatat dari
-    # harga terendah. Harga akhir ditentukan admin di outlet lewat
-    # PUT /api/transaksi/{id}/harga, jadi harga saat booking selalu yang
-    # paling murah dan konsumen melihat catatan "mulai dari".
-    master = shoe.data[0]
-    data["harga"] = master.get("harga_min") or master["harga_cuci"]
-
-    # Metode bayar: normalisasi alias lalu tolak yang tidak diterima outlet.
-    # Dulu pilihan ini hanya hiasan UI -- tidak dikirim ke backend sama sekali,
-    # jadi admin tidak pernah tahu konsumen mau bayar lewat apa.
-    pm = (data.get("payment_method") or "").strip().lower() or None
-    if pm:
-        pm = _ALIAS_BAYAR.get(pm, pm)
-        if ACCEPTED_PAYMENTS and pm not in ACCEPTED_PAYMENTS:
-            raise HTTPException(
-                400,
-                f"Metode pembayaran '{pm}' tidak diterima. Pilihan: {', '.join(ACCEPTED_PAYMENTS)}",
-            )
-    data["payment_method"] = pm
-
-    # grup_id: harus UUID valid kalau diisi. Frontend membuatnya per batch
-    # booking multi-pasang; nilai ngawur ditolak supaya kolom ini tetap
-    # bisa diandalkan untuk mengelompokkan.
-    if data.get("grup_id"):
-        try:
-            data["grup_id"] = str(uuid.UUID(str(data["grup_id"])))
-        except (ValueError, AttributeError):
-            raise HTTPException(400, "grup_id harus berupa UUID")
-    else:
-        data["grup_id"] = None
-
-    data["status"] = "Diterima"
-    data["tech_commission"] = komisi_untuk(data["harga"], data.get("tech_id"))
-    data["kode"] = generate_tracking_code()
-    data["created_at"] = get_now_iso()
-
-    try:
-        result = supabase.from_("transactions").insert(data).execute()
-        if not result.data:
-            raise HTTPException(500, "Gagal membuat transaksi")
-        return result.data[0]
-    except HTTPException:
-        raise
-    except Exception as e:
-        # PGRST204 = kolom di payload belum ada di database (migrasi belum
-        # dijalankan). Terjemahkan jadi pesan yang bisa ditindaklanjuti --
-        # "Could not find the 'payment_method' column ... in the schema cache"
-        # mentah tidak memberi konsumen/admin tahu harus berbuat apa.
-        pesan = str(e)
-        if "PGRST204" in pesan or "schema cache" in pesan:
-            raise HTTPException(
-                503,
-                "Database belum dimigrasi (ada kolom baru yang belum dibuat). "
-                "Jalankan migrate.sql di Supabase SQL Editor, lalu coba lagi.",
-            )
-        raise HTTPException(500, f"Database error: {pesan}")
-
-def _bisa_lihat(user: dict, trx: dict) -> bool:
-    """Cek apakah user berhak melihat transaksi ini."""
-    if user["role"] in ("admin", "drop_point"):
-        return True
-    if user["role"] == "customer":
-        return trx.get("user_id") == user["id"]
-    if user["role"] == "technician":
-        return trx.get("tech_id") == user["id"]
-    return False
-
-@app.get("/api/transaksi", response_model=List[TransactionResponse], tags=["Transaksi"])
-def list_transaksi(
-    response: Response,
-    user: dict = Depends(get_current_user),
-    status: Optional[str] = None,
-    tech_id: Optional[str] = None,
-    drop_point_id: Optional[str] = None,
-    user_id: Optional[str] = None,
-    q: Optional[str] = None,
-    dari: Optional[str] = None,
-    sampai: Optional[str] = None,
-    dari_selesai: Optional[str] = None,
-    sampai_selesai: Optional[str] = None,
-    grup_id: Optional[str] = None,
-    urut: str = "terbaru",
-    limit: Optional[int] = None,
-    page: Optional[int] = None,
-    per_page: Optional[int] = None,
-):
-    """
-    Daftar transaksi. Konsumen hanya melihat miliknya sendiri, teknisi hanya
-    yang ditugaskan ke dirinya. Filter user_id/tech_id dari query diabaikan
-    untuk non-admin supaya tidak bisa dipakai menembak data orang lain.
-
-    `q` mencari di kolom kode (KS-XXXXXX). Pencarian nama pelanggan harus lewat
-    filter user_id, karena PostgREST tidak bisa dicari lewat relasi di or_.
-
-    ADA DUA PASANGAN FILTER TANGGAL, dan bedanya penting:
-
-      - `dari` / `sampai`            -> tanggal MASUK (created_at). Dipakai untuk
-                                        melihat antrean: "yang masuk sejak tanggal
-                                        berapa".
-      - `dari_selesai` / `sampai_selesai` -> tanggal SELESAI (selesai_at), diisi
-                                        teknisi. Dipakai untuk laporan: "yang
-                                        selesai di bulan ini".
-
-    Yang kedua sengaja dipisah, bukan digabung dengan `dari`. Kalau keduanya
-    dipakai bersama-sama, hasilnya baris yang masuk DAN selesai di rentang itu --
-    untuk laporan omzet yang salah, karena cucian yang masuk bulan lalu lalu
-    selesai bulan ini harus ikut dihitung bulan ini.
-
-    `urut`: "terbaru" (default), "terlama", "nilai_tinggi", "nilai_rendah".
-    """
-    if user["role"] not in ("admin", "drop_point"):
-        tech_id = None
-        user_id = None
-
-    cari = _cari_teks(q)
-
-    # Bentuk select: nama sepatu dan teknisi selalu ikut (bukan data sensitif,
-    # dan tanpa itu tabel admin cuma menampilkan UUID yang tidak berguna).
-    # Kontak pelanggan TIDAK ikut lewat embed; itu ditangani terpisah oleh
-    # _sertakan_kontak supaya aturan privasi tetap di satu tempat.
-    kolom = "*,shoe:shoes(" + _KOLOM_SHOE + "),tech:profiles!transactions_tech_id_fkey(id, full_name)"
-
-    def bangun() -> object:
-        query = supabase.from_("transactions").select(kolom, count="exact")
-
-        # Kunci baris ke pemilik
-        if user["role"] == "customer":
-            query = query.eq("user_id", user["id"])
-        elif user["role"] == "technician":
-            query = query.eq("tech_id", user["id"])
-
-        if status:
-            query = query.eq("status", status)
-        if tech_id == "null":
-            # "Belum ditugaskan". PostgREST membedakan string "null" dari SQL
-            # NULL, jadi eq("tech_id", "null") akan mencari literal 'null' dan
-            # selalu kosong -- harus lewat is_(). Filter ini tetap aman untuk
-            # non-admin karena tech_id sudah dipaksa None di atas.
-            query = query.is_("tech_id", "null")
-        elif tech_id:
-            query = query.eq("tech_id", tech_id)
-        if drop_point_id:
-            query = query.eq("drop_point_id", drop_point_id)
-        if user_id:
-            query = query.eq("user_id", user_id)
-        if grup_id:
-            # Booking multi-pasang: semua transaksi satu sesi. Scope peran di
-            # atas tetap berlaku, jadi konsumen hanya melihat grup miliknya.
-            query = query.eq("grup_id", grup_id)
-        if cari:
-            query = query.ilike("kode", f"%{cari}%")
-        if dari:
-            query = query.gte("created_at", dari)
-        if sampai:
-            query = query.lte("created_at", sampai)
-        # Tanggal selesai. `lt()` dipakai (bukan `lte`) supaya baris yang
-        # selesai tepat pada 1 pukul 00:00 bulan berikutnya tidak ikut terhitung
-        # di bulan yang sedang ditutup. Batas atas dikirim sebagai "tanggal
-        # berikutnya", bukan tanggal terakhir.
-        if dari_selesai:
-            query = query.gte("selesai_at", dari_selesai)
-        if sampai_selesai:
-            query = query.lt("selesai_at", sampai_selesai)
-
-        if urut == "terlama":
-            return query.order("created_at")
-        if urut == "nilai_tinggi":
-            return query.order("harga", desc=True).order("created_at", desc=True)
-        if urut == "nilai_rendah":
-            return query.order("harga").order("created_at", desc=True)
-        return query.order("created_at", desc=True)
-
-    if page is None:
-        query = bangun().limit(limit) if limit else bangun()
-        return _siapkan_transaksi(query.execute().data or [], user)
-    return _siapkan_transaksi(
-        _halaman_berpaginan(bangun, page, per_page, response), user
-    )
-
-@app.get("/api/transaksi/tersedia", response_model=List[TransactionResponse], tags=["Transaksi"])
-def get_tersedia_transaksi(
-    user: dict = Depends(get_current_user),
-):
-    """
-    Daftar transaksi dengan status Diterima yang belum dipilih teknisi (tech_id IS NULL).
-    Urutan FIFO (First In First Out): yang dulu datenya dikerjakan dulu.
-    Hanya lihat teknisi admin/mitra, teknisi lihat miliknya sendiri.
-    """
-    query = supabase.from_("transactions").select(
-        "*,shoe:shoes(" + _KOLOM_SHOE + "),tech:profiles!transactions_tech_id_fkey(id, full_name)"
-    )
-
-    if user["role"] == "customer":
-        query = query.eq("user_id", user["id"])
-    elif user["role"] == "technician":
-        # Teknisi hanya milikannya (tech_id IS NULL AND status = Diterima)
-        query = query.is_("tech_id", "null").eq("status", "Diterima")
-    else:
-        # Admin/mitra: semua (tech_id IS NULL AND status = Diterima)
-        query = query.is_("tech_id", "null").eq("status", "Diterima")
-
-    query = query.order("created_at", desc=False)
-    try:
-        trx = query.execute().data or []
-        return _siapkan_transaksi(trx, user)
-    except Exception as e:
-        import traceback
-        tb = traceback.format_exc()
-        print(f"ERROR in get_tersedia_transaksi: {e}")
-        print(tb)
-        raise HTTPException(500, f"Database error: {type(e).__name__}: {str(e)}")
-
-
-@app.get("/api/transaksi/{transaksi_id}", response_model=TransactionResponse, tags=["Transaksi"])
-def get_transaksi(transaksi_id: str, user: dict = Depends(get_current_user)):
-    result = supabase.from_("transactions").select("*").eq("id", transaksi_id).execute()
-    if not result.data:
-        raise HTTPException(404, "Transaksi tidak ditemukan")
-    if not _bisa_lihat(user, result.data[0]):
-        raise HTTPException(403, "Kamu tidak punya akses ke transaksi ini")
-    return _siapkan_transaksi([result.data[0]], user)[0]
-
-@app.get("/api/transaksi/tracking/{kode}", tags=["Transaksi"])
-@limiter.limit("30/minute")
-def tracking_transaksi(request: Request, kode: str):
-    """Cek status pakai nomor tracking (KS-XXXXXX) — dipakai halaman publik."""
-    result = (
-        supabase.from_("transactions")
-        .select(
-            "*, shoes(" + _KOLOM_SHOE + "), drop_points(nama, alamat, wa_contact)"
-        )
-        .eq("kode", kode.strip().upper())
-        .execute()
-    )
-    if not result.data:
-        raise HTTPException(404, "Nomor booking tidak ditemukan")
-
-    trx = result.data[0]
-    return {
-        "kode": trx.get("kode"),
-        "status": trx["status"],
-        "harga": trx["harga"],
-        "created_at": _waktu_utc(trx["created_at"]),
-        "updated_at": _waktu_utc(trx.get("updated_at")),
-        # Tanggal selesai dicatat teknisi. Konsumen butuh ini untuk tahu kapan
-        # cuciannya rampung, jadi sengaja ikut ke halaman publik.
-        "selesai_at": _waktu_utc(trx.get("selesai_at")),
-        "catatan_konsumen": trx.get("catatan_konsumen"),
-        "payment_method": trx.get("payment_method"),
-        # Ada untuk booking multi-pasang: halaman status memakainya untuk
-        # menampilkan pasangan lain dalam booking yang sama.
-        "grup_id": trx.get("grup_id"),
-        "photo_before": trx.get("photo_before"),
-        "photo_after": trx.get("photo_after"),
-        "photo_defect": trx.get("photo_defect"),
-        "shoes": trx.get("shoes"),
-        "drop_point": trx.get("drop_points"),
-    }
-
-
-@app.get("/api/transaksi/grup/{grup_id}", tags=["Transaksi"])
-def tracking_grup(grup_id: str):
-    """
-    Semua pasangan dalam satu booking multi-pasang (publik, data minimal).
-
-    Sengaja hanya kode + status + nama layanan: cukup untuk halaman status
-    menampilkan "booking ini berisi 3 pasang", tanpa membuka harga atau
-    data lain milik sesi booking orang.
-    """
-    try:
-        grup = str(uuid.UUID(grup_id))
-    except (ValueError, AttributeError):
-        raise HTTPException(400, "grup_id harus berupa UUID")
-
-    result = (
-        supabase.from_("transactions")
-        .select("kode, status, shoes(merk, model)")
-        .eq("grup_id", grup)
-        .order("created_at")
-        .execute()
-    )
-    if not result.data:
-        raise HTTPException(404, "Booking grup tidak ditemukan")
-    return [
-        {"kode": t.get("kode"), "status": t.get("status"), "shoes": t.get("shoes")}
-        for t in result.data
-    ]
-
-@app.put("/api/transaksi/{transaksi_id}/status", response_model=TransactionResponse, tags=["Transaksi"])
-def update_transaksi_status(
-    transaksi_id: str,
-    update: TransactionStatusUpdate,
-    user: dict = Depends(get_current_user),
-):
-    """
-    Ubah status. Hanya teknisi yang ditugaskan ke transaksi ini, atau admin.
-    Konsumen dan drop point tidak boleh mengubah status.
-    """
-    # Cek transaksi ada
-    existing = supabase.from_("transactions").select("*").eq("id", transaksi_id).execute()
-    if not existing.data:
-        raise HTTPException(404, "Transaksi tidak ditemukan")
-
-    current = existing.data[0]
-
-    if user["role"] == "admin":
-        pass  # admin boleh semua
-    elif user["role"] == "technician":
-        # Teknisi hanya boleh transaksi yang ditugaskan ke dirinya.
-        # Kalau belum ada teknisi (status Diterima), teknisi boleh ambil
-        # sendiri dengan mengassign tech_id = id-nya.
-        if current.get("tech_id") not in (None, user["id"]):
-            raise HTTPException(403, "Transaksi ini bukan tugasmu")
-        # Selalu paksa ke id sendiri, bukan hanya saat masih kosong:
-        # kalau dibiarkan, teknisi bisa mengirim tech_id orang lain lewat
-        # payload dan komisi jatuh ke pengerja yang salah.
-        update.tech_id = user["id"]
-    else:
-        raise HTTPException(403, "Kamu tidak punya akses untuk mengubah status")
-
-    data = update.model_dump(exclude_unset=True)
-    data["updated_at"] = get_now_iso()
-
-    # Komisi selalu mengikuti pengerja terkini. Jalur ini bisa mengisi
-    # tech_id untuk pertama kali (teknisi ambil tugas dari halaman status),
-    # jadi 40% harus dihitung di sini juga -- kalau tidak, transaksi yang
-    # diambil lewat jalur ini tersimpan dengan komisi 0.
-    if "tech_id" in data:
-        data["tech_commission"] = komisi_untuk(
-            current.get("harga") or 0, data.get("tech_id")
-        )
-
-    # Tanggal selesai dicatat di sini, bukan dari frontend, supaya tidak bisa
-    # dipalsukan dan selalu konsisten dengan kapan status benar-benar berubah.
-    #
-    #   masuk final  -> isi sekali, lalu JANGAN diubah lagi saat status naik
-    #                  dari Selesai ke Siap diambil (tanggal CuomoCI yang
-    #                  tercatat di laporan harus tanggal pekerjaannya selesai)
-    #   keluar final -> kosongkan lagi; pekerjaan diropan belum selesai
-    #
-    # Transaksi lama yang sudah berstatus Selesai sebelum kolom ini ada tidak
-    # bisa ditebak ulang, jadi selesai_at hanya diisi kalau statusnya memang
-    # SEDANG BERUBAH -- biarkan yang sudah lewat tetap NULL.
-    #
-    # Pengecekan `update.status != current["status"]` ini wajib, bukan sekadar
-    # "sudah terisi atau belum". Tanpa itu, teknisi yang menyimpan catatan pada
-    # pekerjaan berstatus Selesai (statusnya dikirim ulang tanpa berubah) akan
-    # menulis selesai_at = hari ini, dan pekerjaan lama itu tiba-tiba masuk ke
-    # omzet bulan ini.
-    if update.status in ("Selesai", "Siap diambil"):
-        if not current.get("selesai_at") and update.status != current.get("status"):
-            data["selesai_at"] = get_now_iso()
-    else:
-        data["selesai_at"] = None
-
-    # Foto "sesudah" wajib ada (baris ini ATAU yang sudah tersimpan sebelumnya)
-    if update.status in ("Selesai", "Siap diambil"):
-        has_after = data.get("photo_after") or current.get("photo_after")
-        if not has_after:
-            raise HTTPException(
-                400,
-                "Foto setelah (photo_after) wajib diunggah sebelum menandai Selesai/Siap diambil",
-            )
-
-    result = supabase.from_("transactions").update(data).eq("id", transaksi_id).execute()
-    if not result.data:
-        raise HTTPException(404, "Transaksi tidak ditemukan")
-    # WAJIB lewat _siapkan_transaksi: endpoint ini boleh dipanggil teknisi,
-    # dan baris mentah dari database masih memuat harga serta tech_commission.
-    # Tanpa ini, teknisi membaca commission setiap kali ia update status.
-    return _siapkan_transaksi([result.data[0]], user)[0]
-
-
-@app.post("/api/transaksi/{transaksi_id}/claim", response_model=TransactionResponse, tags=["Transaksi"])
-def claim_transaksi(
-    transaksi_id: str,
-    user: dict = Depends(get_current_user),
-):
-    """
-    Teknisi atau admin mengclaim (mengambil) pekerjaan ini.
-    - Hanya teknisi yang ditugaskan ke transaksi, atau admin, boleh claim.
-    - Kalau status Diterima dan belum ada teknisi, maka tech_id diisi dan
-      status jadi Diproses.
-    - Kalau status sudah bukan Diterima, error 403.
-    - Mengembalikan transaksi lengkap setelah di-assign.
-    """
-    # Cek transaksi ada
-    existing = supabase.from_("transactions").select("*").eq("id", transaksi_id).execute()
-    if not existing.data:
-        raise HTTPException(404, "Transaksi tidak ditemukan")
-
-    trx = existing.data[0]
-
-    # Hanya teknisi yang ditugasku atau admin boleh claim
-    if user["role"] == "admin":
-        pass  # admin boleh claim semua
-    elif user["role"] == "technician":
-        # Teknisi boleh claim hanya kalau belum diambil, atau kalau itu pekerjaannya sendiri.
-        if trx.get("tech_id") not in (None, user["id"]):
-            raise HTTPException(409, "Transaksi ini sudah diambil teknisi lain")
-        if trx.get("status") != "Diterima":
-            raise HTTPException(403, "Hanya transaksi status Diterima yang bisa diclaim")
-    else:
-        raise HTTPException(403, "Hanya teknisi atau admin yang bisa claim")
-
-    # Assign teknisi dan ubah status ke Diproses. Komisi dihitung di sini
-    # juga: claim adalah jalur utama teknisi mengambil pekerjaan, dan tanpa
-    # baris tech_commission transaksi tersimpan dengan komisi 0 padahal
-    # pengerjanya teknisi (aturan 40%). Admin tetap 0 (kerja sendiri).
-    data = {
-        "tech_id": user["id"],
-        "status": "Diproses",
-        "tech_commission": komisi_untuk(trx.get("harga") or 0, user["id"]),
-        "updated_at": get_now_iso(),
-    }
-
-    result = supabase.from_("transactions").update(data).eq("id", transaksi_id).execute()
-    if not result.data:
-        raise HTTPException(404, "Transaksi tidak ditemukan")
-    # WAJIB lewat _siapkan_transaksi
-    return _siapkan_transaksi([result.data[0]], user)[0]
-
-
-class TransactionPriceUpdate(BaseModel):
-    """
-    Finalisasi harga transaksi.
-
-    Dipakai admin setelah memeriksa kondisi fisik shoes. Untuk layanan
-    ber-harga-rentang (mis. Repaint 80.000-150.000), harga saat booking hanya
-    harga terendah, jadi admin perlu menetapkan harga final di outlet.
-    """
-    harga: int = Field(..., ge=0)
-    alasan: Optional[str] = None  # contoh: "Sol upper robek, area 5 cm"
-
-
-@app.put("/api/transaksi/{transaksi_id}/harga", response_model=TransactionResponse, tags=["Transaksi"])
-def update_transaksi_harga(
-    transaksi_id: str,
-    update: TransactionPriceUpdate,
-    user: dict = Depends(get_current_user),
-):
-    """
-    Admin-only: tetapkan harga final satu transaksi.
-
-    Menghitung ulang tech_commission dari harga final, memakai aturan
-    komisi-berdasarkan-peran: teknisi biasa kena potongan standard
-    (default 40%), admin yang dinyatakan mengerjakan sendiri kena 0 --
-    sehingga mengganti pengerja sebelum final harga tidak meninggalkan
-    komisi yang tak sesuai.
-
-    Ditolak kalau status sudah "Siap diambil": harga saat itu sudah dikunci
-    karena pembeli sudah mengambil barang, dan perubahan diam-diam akan
-    membuat laporan pendapatan tidak cocok dengan uang yang benar-benar masuk.
-    """
-    if user["role"] != "admin":
-        raise HTTPException(403, "Hanya admin yang boleh menetapkan harga")
-
-    existing = (
-        supabase.from_("transactions")
-        .select(
-            "id, status, tech_id, defect_notes, "
-            "shoe:shoes(merk, model, harga_min, harga_max)"
-        )
-        .eq("id", transaksi_id)
-        .execute()
-    )
-    if not existing.data:
-        raise HTTPException(404, "Transaksi tidak ditemukan")
-    current = existing.data[0]
-
-    if current.get("status") == "Siap diambil":
-        raise HTTPException(400, "Harga tidak bisa diubah setelah Shoes siap diambil")
-
-    # Peringatan rentang, bukan penolakan. Admin boleh tetap memakai harga di
-    # luar rentang kalau memang barangnya beda dari deskripsi, tapi jangan
-    # sampai terlewat tanpa sadar.
-    masters = current.get("shoe")
-    if isinstance(masters, list):
-        masters = masters[0] if masters else None
-    if isinstance(masters, dict):
-        batas_min, batas_max = masters.get("harga_min"), masters.get("harga_max")
-        if batas_max and not (batas_min <= update.harga <= batas_max):
-            label = masters.get("merk", "layanan")
-            print(
-                f"[harga] {transaksi_id} di luar rentang {label}: "
-                f"{update.harga} (daftar {batas_min}-{batas_max})"
-            )
-
-    data = {
-        "harga": update.harga,
-        "tech_commission": komisi_untuk(update.harga, current.get("tech_id")),
-        "updated_at": get_now_iso(),
-    }
-    # Catatan alasan disimpan di defect_notes, bukan kolom baru, supaya
-    # tidak perlu migrasi. Prefiks supaya jelas itu keputusan admin, bukan
-    # catatan cacat dari teknisi.
-    if update.alasan:
-        lama = current.get("defect_notes") or ""
-        data["defect_notes"] = (lama + f"\n[Harga final: {update.alasan}]").strip()
-
-    result = (
-        supabase.from_("transactions")
-        .update(data)
-        .eq("id", transaksi_id)
-        .select("*, shoe:shoes(" + _KOLOM_SHOE + "), tech:profiles!transactions_tech_id_fkey(id, full_name)")
-        .execute()
-    )
-    if not result.data:
-        raise HTTPException(404, "Transaksi tidak ditemukan")
-    return _siapkan_transaksi([result.data[0]], user)[0]
-
-
-# ==========================================
-# CRUD PROFILES (USERS)
-# ==========================================
-
-
-
-# ----------------------------------------------------------------
-# ADMIN: Update transaksi (misal ganti teknisi)
-# ----------------------------------------------------------------
-class TransaksiUpdate(BaseModel):
-    tech_id: Optional[str] = None
-    # Ganti layanan/varian (kasus "konsumen salah milih treatment di web"):
-    # id master shoes yang benar. Harga di-reset dari master baru, komisi
-    # ikut dihitung ulang -- bukan angka yang dikirim klien.
-    shoe_id: Optional[str] = None
-
-@app.put("/api/transaksi/{transaksi_id}", response_model=TransactionResponse, tags=["Transaksi"])
-def update_transaksi(
-    transaksi_id: str,
-    update: TransaksiUpdate,
-    user: dict = Depends(get_current_user),
-):
-    """
-    Admin-only. Ganti field transaksi:
-
-    - tech_id    : id teknisi, atau id admin untuk opsi "admin mengerjakan
-                   sendiri" (komisi 0 -- tanpa potongan 40%).
-    - tech_id="" : ikat tanpa pengerja (komisi juga nol).
-    - shoe_id    : ganti layanan/varian ke master yang benar (kasus konsumen
-                   salah memilih di web). Harga di-reset dari layanan baru
-                   -- rentang dicatat dari harga terendah, finalnya lagi
-                   lewat /harga -- dan komisi dihitung ulang.
-
-    Semua bergantian dihitung ulang di server; peran dan harga tidak pernah
-    percaya klien. Ganti layanan ditolak kalau status sudah "Siap diambil":
-    uang sudah masuk, perubahan diam-diam akan membuat laporan pendapatan
-    tidak cocok dengan realita -- aturan yang sama dengan ganti harga final.
-    """
-    if user["role"] != "admin":
-        raise HTTPException(403, "Hanya admin yang bisa mengubah transaksi")
-
-    existing = supabase.from_("transactions").select("*").eq("id", transaksi_id).execute()
-    if not existing.data:
-        raise HTTPException(404, "Transaksi tidak ditemukan")
-
-    data = {}
-    if update.tech_id is not None and update.tech_id != "":
-        tech = (
-            supabase.from_("profiles")
-            .select("id, role")
-            .eq("id", update.tech_id)
-            .execute()
-        )
-        if not tech.data:
-            raise HTTPException(400, "Teknisi tidak ditemukan")
-        # Hanya technician/admin yang boleh jadi pengerja. Tanpa ini,
-        # id drop_point/konsumen bisa ditempel ke transaksi dan komisi
-        # dihitung untuk orang yang tidak pernah mengerjakan apa pun.
-        if tech.data[0]["role"] not in ("technician", "admin"):
-            raise HTTPException(400, "Pengerja harus teknisi atau admin")
-        data["tech_id"] = update.tech_id
-    elif update.tech_id == "":
-        data["tech_id"] = None
-
-    if update.shoe_id is not None and update.shoe_id != "":
-        if existing.data[0].get("status") == "Siap diambil":
-            raise HTTPException(
-                400,
-                "Transaksi sudah Siap diambil -- harga sudah dikunci karena "
-                "barang sudah diambil. Pembayaran tidak bisa diganti diam-diam.",
-            )
-        layanan = (
-            supabase.from_("shoes")
-            .select("id, harga_cuci, harga_min, status")
-            .eq("id", update.shoe_id)
-            .execute()
-        )
-        if not layanan.data:
-            raise HTTPException(400, "Layanan tidak ditemukan")
-        master = layanan.data[0]
-        if not master["status"]:
-            raise HTTPException(400, "Layanan ini sedang tidak tersedia")
-        data["shoe_id"] = update.shoe_id
-        # Aturan harga yang sama dengan booking: layanan ber-rentang dicatat
-        # dari harga terendah sampai admin menetapkan harga final.
-        data["harga"] = master.get("harga_min") or master["harga_cuci"]
-    elif update.shoe_id == "":
-        raise HTTPException(400, "Layanan tidak boleh kosong")
-
-    if not data:
-        raise HTTPException(400, "Tidak ada field yang diupdate")
-
-    # Komisi selalu digandingkan dengan kondisi terkini:
-    # - ganti pengerja  -> hitung ulang komisi dari harga yang ada;
-    # - ganti layanan   -> harga dasarnya ikut master baru dulu, baru
-    #                     komisinya dihitung dari harga itu;
-    # - dua-duanya      -> layanan baru menentukan dasar harga, pengerja
-    #                     baru menentukan siapa berhak atas komisinya.
-    if "tech_id" in data or "shoe_id" in data:
-        harga_dasar = data.get("harga") or (existing.data[0].get("harga") or 0)
-        pengerja_kini = data.get("tech_id", existing.data[0].get("tech_id"))
-        data["tech_commission"] = komisi_untuk(harga_dasar, pengerja_kini)
-
-    data["updated_at"] = get_now_iso()
-    result = supabase.from_("transactions").update(data).eq("id", transaksi_id).execute()
-    if not result.data:
-        raise HTTPException(404, "Transaksi tidak ditemukan")
-    return _siapkan_transaksi([result.data[0]], user)[0]
-
-
-
-# ----------------------------------------------------------------
-# PHOTO UPLOAD (Supabase Storage)
-# ----------------------------------------------------------------
-from fastapi import UploadFile, File, Form
-import uuid
-
-PHOTO_BUCKET = "transaksi-photos"
-
-@app.post("/api/transaksi/{transaksi_id}/photo", tags=["Photo"])
-async def upload_photo(
-    transaksi_id: str,
-    jenis: str = Form(...),  # "before" | "after" | "defect"
-    file: UploadFile = File(...),
-    user: dict = Depends(get_current_user),
-):
-    """Upload foto transaksi ke Supabase Storage."""
-    # Validasi transaksi
-    existing = supabase.from_("transactions").select("*").eq("id", transaksi_id).execute()
-    if not existing.data:
-        raise HTTPException(404, "Transaksi tidak ditemukan")
-    
-    # Validasi jenis
-    if jenis not in ("before", "after", "defect"):
-        raise HTTPException(400, "Jenis foto harus: before, after, atau defect")
-    
-    # Validasi file
-    if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(400, "File harus berupa gambar")
-    
-    # Validasi ukuran (max 5MB)
-    content = await file.read()
-    if len(content) > 5 * 1024 * 1024:
-        raise HTTPException(400, "Ukuran file maksimal 5MB")
-    
-    # Generate filename
-    ext = file.filename.split(".")[-1].lower() if "." in file.filename else "jpg"
-    filename = f"{transaksi_id}/{jenis}_{uuid.uuid4().hex[:8]}.{ext}"
-    
-    # Upload ke Supabase Storage
-    try:
-        result = supabase.storage.from_(PHOTO_BUCKET).upload(
-            filename,
-            content,
-            {"content-type": file.content_type, "upsert": "true"}
-        )
-        if hasattr(result, 'error') and result.error:
-            raise Exception(result.error.message)
-    except Exception as e:
-        raise HTTPException(500, f"Gagal upload: {str(e)}")
-    
-    # Get public URL
-    public_url = supabase.storage.from_(PHOTO_BUCKET).get_public_url(filename)
-    
-    # Update transaksi dengan URL foto
-    field_map = {"before": "photo_before", "after": "photo_after", "defect": "photo_defect"}
-    supabase.from_("transactions").update({
-        field_map[jenis]: public_url,
-        "updated_at": get_now_iso()
-    }).eq("id", transaksi_id).execute()
-    
-    return {"url": public_url, "jenis": jenis, "filename": filename}
-
-
-@app.get("/api/transaksi/{transaksi_id}/photo/{jenis}", tags=["Photo"])
-async def get_photo_url(
-    transaksi_id: str,
-    jenis: str,  # "before" | "after" | "defect"
-    user: dict = Depends(get_current_user),
-):
-    """Get signed URL untuk akses foto private (jika bucket private)."""
-    if jenis not in ("before", "after", "defect"):
-        raise HTTPException(400, "Jenis foto tidak valid")
-    
-    existing = supabase.from_("transactions").select("*").eq("id", transaksi_id).execute()
-    if not existing.data:
-        raise HTTPException(404, "Transaksi tidak ditemukan")
-    
-    trx = existing.data[0]
-    field_map = {"before": "photo_before", "after": "photo_after", "defect": "photo_defect"}
-    url = trx.get(field_map[jenis])
-    if not url:
-        raise HTTPException(404, "Foto tidak ditemukan")
-    
-    # Generate signed URL (valid 1 jam)
-    signed = supabase.storage.from_(PHOTO_BUCKET).create_signed_url(
-        f"{transaksi_id}/{jenis}_*.*", 3600
-    )
-    if hasattr(signed, 'error') and signed.error:
-        return {"url": url}
-    return {"url": signed.signedURL}
-
-
-# Endpoint lama untuk kompatibilitas
-@app.post("/api/transaksi/{transaksi_id}/photo-before", tags=["Photo"])
-async def upload_photo_before(
-    transaksi_id: str,
-    file: UploadFile = File(...),
-    user: dict = Depends(get_current_user),
-):
-    return await upload_photo(transaksi_id, "before", file, user)
-
-
-@app.post("/api/transaksi/{transaksi_id}/photo-after", tags=["Photo"])
-async def upload_photo_after(
-    transaksi_id: str,
-    file: UploadFile = File(...),
-    user: dict = Depends(get_current_user),
-):
-    return await upload_photo(transaksi_id, "after", file, user)
-
-
-@app.post("/api/transaksi/{transaksi_id}/photo-defect", tags=["Photo"])
-async def upload_photo_defect(
-    transaksi_id: str,
-    file: UploadFile = File(...),
-    user: dict = Depends(get_current_user),
-):
-    return await upload_photo(transaksi_id, "defect", file, user)
-
-
-# ----------------------------------------------------------------
-# CLEANUP FOTO OTOMATIS (Storage TTL)
-# ----------------------------------------------------------------
-# Supabase free tier TIDAK punya fitur hapus-otomatis, jadi penghapusannya
-# dijalankan dari luar lewat GitHub Actions (lihat
-# .github/workflows/cleanup-photos.yml) yang memanggil endpoint ini tiap hari.
-#
-# Retensi dihitung dari `updated_at`, bukan dari waktu upload foto. Artinya
-# begitu ada aktivitas apa pun pada transaksi (status diganti, harga diedit),
-# hitungan mundurnya mulai dari nol lagi. Konsekuensinya foto bisa bertahan
-# LEBIH dari PHOTO_TTL_DAYS -- dan itu memang yang kita mau: foto jangan
-# sampai hilang di tengah masa komplain. Tidak ada kolom baru yang dibuat
-# hanya untuk fitur ini.
-CLEANUP_TOKEN = os.getenv("CLEANUP_TOKEN", "")
-PHOTO_TTL_DAYS = int(os.getenv("PHOTO_TTL_DAYS", "7"))
-
-# Batas aman per run, supaya satu kali panggilan tidak menembak batas
-# 1000 objek milik method `remove()` milik Supabase Storage.
-MAX_TRANSAKSI_PER_RUN = 500
-
-
-def _path_dari_url_public(url: str) -> Optional[str]:
-    """Ambil path objek dari URL publik Supabase Storage.
-
-    Format yang disimpan kolom foto:
-      https://<proj>.supabase.co/storage/v1/object/public/<bucket>/<path>
-
-    Yang dibutuhkan untuk menghapus hanya <path>-nya. URL lama yang tidak
-    cocok format ini mengembalikan None dan sengaja dilewati -- lebih baik
-    satu file tidak terhapus daripada path salah menghapus file orang lain.
-    """
-    if not url:
-        return None
-    penanda = f"/object/public/{PHOTO_BUCKET}/"
-    posisi = url.find(penanda)
-    if posisi == -1:
-        return None
-    path = url[posisi + len(penanda):]
-    # Path kosong atau berisi titik-slash berarti URL aneh -- jangan sentuh.
-    if not path or path.startswith("/") or ".." in path:
-        return None
-    return path
-
-
-@app.post("/internal/cleanup-fotos", tags=["Internal"])
-@limiter.limit("5/hour")
-def cleanup_fotos(request: Request, x_cleanup_token: Optional[str] = Header(default=None)):
-    """Hapus foto transaksi yang sudah melewati masa retensi.
-
-    Dipanggil cron GitHub Actions, bukan oleh user. Karena itu autentikasinya
-    BUKAN JWT (tidak ada user yang login), melainkan token statis lewat header
-    `X-Cleanup-Token` yang dibandingkan dengan env CLEANUP_TOKEN.
-
-    Pakai hmac.compare_digest, bukan ==: perbandingan biasa bisa membocorkan
-    panjang token lewat waktu respons (timing attack).
-    """
-    if not CLEANUP_TOKEN:
-        raise HTTPException(
-            503,
-            "CLEANUP_TOKEN belum diisi di .env backend. Isi dulu sebelum cron diaktifkan.",
-        )
-    if not x_cleanup_token or not hmac.compare_digest(x_cleanup_token, CLEANUP_TOKEN):
-        # Pesan sengaja umum: tidak membocorkan apakah token-nya salah
-        # format atau server-nya memang belum dikonfigurasi.
-        raise HTTPException(401, "Token cleanup tidak valid")
-
-    batas = (datetime.now(timezone.utc) - timedelta(days=PHOTO_TTL_DAYS)).isoformat()
-
-    # Kolom foto yang tidak NULL. Pakai atau_() karena satu transaksi bisa
-    # punya lebih dari satu jenis foto.
-    hasil = (
-        supabase.from_("transactions")
-        .select("id, kode, photo_before, photo_after, photo_defect")
-        .lte("updated_at", batas)
-        .or_(
-            "photo_before.not.is.null,"
-            "photo_after.not.is.null,"
-            "photo_defect.not.is.null"
-        )
-        .limit(MAX_TRANSAKSI_PER_RUN)
-        .execute()
-    )
-
-    rows = hasil.data or []
-    path_per_transaksi: dict[str, list[str]] = {}
-    kolom_per_transaksi: dict[str, list[str]] = {}
-
-    for row in rows:
-        paths: list[str] = []
-        kolom_terisi: list[str] = []
-        for kolom in ("photo_before", "photo_after", "photo_defect"):
-            path = _path_dari_url_public(row.get(kolom))
-            if path:
-                paths.append(path)
-                kolom_terisi.append(kolom)
-        if paths:
-            path_per_transaksi[row["id"]] = paths
-            kolom_per_transaksi[row["id"]] = kolom_terisi
-
-    semua_path = [p for paths in path_per_transaksi.values() for p in paths]
-
-    dihapus: list[str] = []
-    gagal: list[str] = []
-
-    # Batch per 500: batas riil Supabase adalah 1000 objek per panggilan.
-    for i in range(0, len(semua_path), 500):
-        batch = semua_path[i:i + 500]
-        try:
-            res = supabase.storage.from_(PHOTO_BUCKET).remove(batch)
-            # Supabase-py versi lama mengembalikan objek dengan .error,
-            # versi baru melempar exception. Keduanya ditangani.
-            if hasattr(res, "error") and res.error:
-                raise Exception(res.error.message)
-            dihapus.extend(batch)
-        except Exception as e:
-            gagal.extend(batch)
-            # Log kecil supaya kegagalan terlihat di output cron GitHub Actions.
-            print(f"[cleanup] gagal hapus batch {len(batch)} file: {e}")
-
-    # Kosongkan kolom hanya untuk transaksi yang file-nya benar-benar hilang
-    # dari storage. Kalau dihapus duluan kolomnya, file yang gagal dihapus
-    # jadi yatim: tidak ada jejak di database tapi masih makan kuota 1 GB.
-    path_dihapus = set(dihapus)
-    for transaksi_id, paths in path_per_transaksi.items():
-        if not any(p in path_dihapus for p in paths):
-            continue
-        try:
-            supabase.from_("transactions").update(
-                {kolom: None for kolom in kolom_per_transaksi[transaksi_id]}
-            ).eq("id", transaksi_id).execute()
-        except Exception as e:
-            print(f"[cleanup] gagal kosongkan kolom transaksi {transaksi_id}: {e}")
-
-    return {
-        "retensi_hari": PHOTO_TTL_DAYS,
-        "cutoff": batas,
-        "transaksi_diperiksa": len(rows),
-        "file_dihapus": len(dihapus),
-        "file_gagal": len(gagal),
-    }
-
-
-@app.post("/api/users", response_model=ProfileResponse, status_code=status.HTTP_201_CREATED, tags=["Users"])
-def create_user(user: ProfileCreate, _: dict = Depends(require_role("admin"))):
-    data = user.model_dump()
-    data["phone"] = normalize_phone(data["phone"])
-    data["created_at"] = get_now_iso()
-    data["is_verified"] = user.role in ("admin", "technician", "drop_point")
-    try:
-        result = supabase.from_("profiles").insert(data).execute()
-        if not result.data:
-            raise HTTPException(500, "Gagal membuat user")
-        return result.data[0]
-    except Exception as e:
-        if "duplicate key" in str(e).lower():
-            raise HTTPException(400, "Nomor telepon sudah terdaftar")
-        raise HTTPException(500, f"Database error: {str(e)}")
-
-def _password_acak(panjang: int = 8) -> str:
-    # Tanpa karakter yang mirip (I, l, O, 0, 1) supaya mudah dibaca di WhatsApp.
-    alfabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
-    return "".join(secrets.choice(alfabet) for _ in range(panjang))
-
-# Versi dengan password — dipakai admin saat membuat teknisi/drop point
-@app.post("/api/users/with-password", status_code=status.HTTP_201_CREATED, tags=["Users"])
-def create_user_with_password(payload: ProfileCreate, _: dict = Depends(require_role("admin"))):
-    password = _password_acak()
-    _create_user_with_password(
-        full_name=payload.full_name,
-        phone=payload.phone,
-        password=password,
-        role=payload.role,
-    )
-    return {
-        "detail": "User dibuat dengan sandi sementara acak.",
-        "phone": normalize_phone(payload.phone),
-        "password": password,
-    }
-
-@app.get("/api/users", response_model=List[ProfileResponse], tags=["Users"])
-def list_users(
-    response: Response,
-    _: dict = Depends(require_role("admin")),
-    role: Optional[str] = None,
-    q: Optional[str] = None,
-    urut: str = "terbaru",
-    page: Optional[int] = None,
-    per_page: Optional[int] = None,
-):
-    """Daftar user. `q` mencari di nama dan nomor WhatsApp."""
-    cari = _cari_teks(q)
-
-    def bangun() -> object:
-        query = supabase.from_("profiles").select("*", count="exact")
-        if role:
-            query = query.eq("role", role)
-        if cari:
-            query = query.or_(
-                ",".join([_pola_ilike("full_name", cari), _pola_ilike("phone", cari)])
-            )
-        if urut == "nama":
-            return query.order("full_name")
-        if urut == "nama_z":
-            return query.order("full_name", desc=True)
-        return query.order("created_at", desc=True)
-
-    if page is None:
-        return bangun().execute().data or []
-    return _halaman_berpaginan(bangun, page, per_page, response)
-
-@app.get("/api/users/{user_id}", response_model=ProfileResponse, tags=["Users"])
-def get_user(user_id: str, _: dict = Depends(require_role("admin"))):
-    result = supabase.from_("profiles").select("*").eq("id", user_id).execute()
-    if not result.data:
-        raise HTTPException(404, "User tidak ditemukan")
-    return result.data[0]
-
-@app.put("/api/users/{user_id}", response_model=ProfileResponse, tags=["Users"])
-def update_user(user_id: str, user: ProfileUpdate, _: dict = Depends(require_role("admin"))):
-    data = user.model_dump(exclude_unset=True)
-    if not data:
-        raise HTTPException(400, "Tidak ada data yang diupdate")
-
-    # Cegah admin terakhir kehilangan akses: jangan biarkan admin mengubah
-    # role dirinya sendiri jadi bukan admin.
-    if data.get("role") and data["role"] != "admin":
-        target = supabase.from_("profiles").select("id, role").eq("id", user_id).execute()
-        if target.data and target.data[0]["role"] == "admin":
-            admins = supabase.from_("profiles").select("id").eq("role", "admin").execute().data or []
-            if len(admins) <= 1:
-                raise HTTPException(400, "Tidak bisa menurunkan role admin terakhir")
-
-    result = supabase.from_("profiles").update(data).eq("id", user_id).execute()
-    if not result.data:
-        raise HTTPException(404, "User tidak ditemukan")
-    return result.data[0]
-
-
-@app.delete("/api/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Users"])
-def delete_user(user_id: str, user: dict = Depends(get_current_user)):
-    """
-    Admin-only. Hapus akun (profil) secara permanen.
-
-    Aturannya sengaja ketat karena riwayat harus tetap bisa dipertanggung-
-    jawabkan:
-
-    - Tidak bisa menghapus akun sendiri: dengan ini satu-satunya jalan masuk
-      sebagai admin bisa dua kali klik hilang.
-    - Tidak bisa menghapus akun yang masih tertulis pada sebuah transaksi,
-      baik sebagai pembeli maupun sebagai pengerja. Kolom user_id memang
-      ON DELETE RESTRICT di DB, tapi tech_id akan di-set NULL diam-diam --
-      dan itu menghapus jejak siapa yang mengerjakan serta dasar perhitungan
-      komisi. Keduanya ditolak di sini dengan pesan yang bisa dibaca, bukan
-      diserahkan ke error FK yang tidak ramah.
-    """
-    if user["role"] != "admin":
-        raise HTTPException(403, "Hanya admin yang boleh menghapus akun")
-    if user_id == user["id"]:
-        raise HTTPException(400, "Tidak bisa menghapus akun sendiri")
-
-    target = (
-        supabase.from_("profiles")
-        .select("full_name")
-        .eq("id", user_id)
-        .execute()
-    )
-    if not target.data:
-        raise HTTPException(404, "User tidak ditemukan")
-    nama = (target.data[0].get("full_name") or "User").strip()
-
-    alasan = []
-    sebagai_pembeli = (
-        supabase.from_("transactions")
-        .select("id", count="exact")
-        .eq("user_id", user_id)
-        .execute()
-    )
-    if (sebagai_pembeli.count or 0) > 0:
-        alasan.append(f"{sebagai_pembeli.count} transaksi atas nama pembeli ini")
-
-    sebagai_pengerja = (
-        supabase.from_("transactions")
-        .select("id", count="exact")
-        .eq("tech_id", user_id)
-        .execute()
-    )
-    if (sebagai_pengerja.count or 0) > 0:
-        alasan.append(f"{sebagai_pengerja.count} transaksi masih tertulis dikerjakan di sini")
-
-    if alasan:
-        raise HTTPException(
-            400,
-            f"Akun {nama} tidak bisa dihapus: {', '.join(alasan)}. "
-            "Riwayat tidak boleh kehilangan pemiliknya -- biarkan akunnya tetap ada "
-            "(atau ganti nomor WhatsApp-nya), bukan dihapus.",
-        )
-
-    supabase.from_("profiles").delete().eq("id", user_id).execute()
-
-
-# ==========================================
-# CRUD DROP POINTS
-# ==========================================
-
-@app.post("/api/drop-points", response_model=DropPointResponse, status_code=status.HTTP_201_CREATED, tags=["Drop Points"])
-def create_drop_point(dp: DropPointCreate, _: dict = Depends(require_role("admin"))):
-    data = dp.model_dump()
-    data["created_at"] = get_now_iso()
-    result = supabase.from_("drop_points").insert(data).execute()
-    if not result.data:
-        raise HTTPException(500, "Gagal membuat drop point")
-    return result.data[0]
-
-@app.get("/api/drop-points", response_model=List[DropPointResponse], tags=["Drop Points"])
-def list_drop_points(
-    response: Response,
-    aktif_only: bool = True,
-    q: Optional[str] = None,
-    page: Optional[int] = None,
-    per_page: Optional[int] = None,
-):
-    """
-    Daftar mitra / outlet.
-
-    Tetap publik: alamat outlet memang sengaja ditampilkan di halaman depan
-    supaya pelanggan tahu di mana titip. Halaman booking juga memanggil endpoint
-    ini tanpa login, jadi membikinnya butuh token akan membuat halaman depan
-    diam-diam jatuh ke data cadangan.
-    """
-    cari = _cari_teks(q)
-
-    def bangun() -> object:
-        query = supabase.from_("drop_points").select("*", count="exact")
-        if aktif_only:
-            query = query.eq("aktif", True)
-        if cari:
-            query = query.or_(
-                ",".join([_pola_ilike("nama", cari), _pola_ilike("alamat", cari)])
-            )
-        return query.order("nama")
-
-    if page is None:
-        return bangun().execute().data or []
-    return _halaman_berpaginan(bangun, page, per_page, response)
-
-@app.get("/api/drop-points/{dp_id}", response_model=DropPointResponse, tags=["Drop Points"])
-def get_drop_point(dp_id: str):
-    result = supabase.from_("drop_points").select("*").eq("id", dp_id).execute()
-    if not result.data:
-        raise HTTPException(404, "Drop point tidak ditemukan")
-    return result.data[0]
-
-@app.put("/api/drop-points/{dp_id}", response_model=DropPointResponse, tags=["Drop Points"])
-def update_drop_point(dp_id: str, dp: DropPointUpdate, _: dict = Depends(require_role("admin"))):
-    data = dp.model_dump(exclude_unset=True)
-    if not data:
-        raise HTTPException(400, "Tidak ada data yang diupdate")
-    result = supabase.from_("drop_points").update(data).eq("id", dp_id).execute()
-    if not result.data:
-        raise HTTPException(404, "Drop point tidak ditemukan")
-    return result.data[0]
-
-
-# ==========================================
-# CRUD STOCK (ALAT & BAHAN)
-# ==========================================
-
-@app.post("/api/stock", response_model=StockResponse, status_code=status.HTTP_201_CREATED, tags=["Stock"])
-def create_stock(item: StockCreate, _: dict = Depends(require_role("admin"))):
-    data = item.model_dump()
-    data["last_updated"] = get_now_iso()
-    result = supabase.from_("stock").insert(data).execute()
-    if not result.data:
-        raise HTTPException(500, "Gagal menambah stock")
-    return result.data[0]
-
-@app.get("/api/stock", response_model=List[StockResponse], tags=["Stock"])
-def list_stock(
-    response: Response,
-    _: dict = Depends(require_role("admin", "technician")),
-    tipe: Optional[str] = None,
-    low_stock: bool = False,
-    q: Optional[str] = None,
-    urut: str = "nama",
-    page: Optional[int] = None,
-    per_page: Optional[int] = None,
-):
-    """
-    Daftar stok bahan.
-
-    low_stock difilter lewat daftar id, bukan di Python. Kalau filtering
-    post-hoc, total dan paginasi jadi tidak sinkron -- backend melaporkan
-    "hanya 2 item" padahal di database ada 8, dan halaman 2 jadi kosong
-    padahal masih ada isi.
-    """
-    cari = _cari_teks(q)
-
-    id_kritis: Optional[list[str]] = None
-    if low_stock:
-        semua = (
-            supabase.from_("stock").select("id,jumlah,batas_minimum").execute().data or []
-        )
-        id_kritis = [
-            s["id"] for s in semua if (s.get("jumlah") or 0) <= (s.get("batas_minimum") or 0)
-        ]
-
-    def bangun() -> object:
-        query = supabase.from_("stock").select("*", count="exact")
-        if tipe:
-            query = query.eq("tipe", tipe)
-        if id_kritis is not None:
-            if not id_kritis:
-                # Tidak ada yang kritis. Tetap harus mengembalikan query yang
-                # sah supaya count=0, bukan daftar kosong tanpa total.
-                query = query.in_("id", ["00000000-0000-0000-0000-000000000000"])
-            else:
-                query = query.in_("id", id_kritis)
-        if cari:
-            query = query.ilike("nama_item", f"%{cari}%")
-
-        if urut == "jumlah_terbanyak":
-            return query.order("jumlah", desc=True)
-        if urut == "jumlah_tersedikit":
-            return query.order("jumlah")
-        return query.order("nama_item")
-
-    if page is None:
-        return bangun().execute().data or []
-    return _halaman_berpaginan(bangun, page, per_page, response)
-
-@app.get("/api/stock/{stock_id}", response_model=StockResponse, tags=["Stock"])
-def get_stock(stock_id: str, _: dict = Depends(require_role("admin", "technician"))):
-    result = supabase.from_("stock").select("*").eq("id", stock_id).execute()
-    if not result.data:
-        raise HTTPException(404, "Item stock tidak ditemukan")
-    return result.data[0]
-
-@app.put("/api/stock/{stock_id}", response_model=StockResponse, tags=["Stock"])
-def update_stock(stock_id: str, item: StockUpdate, _: dict = Depends(require_role("admin"))):
-    data = item.model_dump(exclude_unset=True)
-    if not data:
-        raise HTTPException(400, "Tidak ada data yang diupdate")
-    data["last_updated"] = get_now_iso()
-    result = supabase.from_("stock").update(data).eq("id", stock_id).execute()
-    if not result.data:
-        raise HTTPException(404, "Item stock tidak ditemukan")
-    return result.data[0]
-
-@app.post("/api/stock/{stock_id}/kurangi", response_model=StockResponse, tags=["Stock"])
-def kurangi_stock(stock_id: str, jumlah: int, _: dict = Depends(require_role("admin", "technician"))):
-    """Kurangi stok (dipakai teknisi saat memakai bahan)."""
-    if jumlah <= 0:
-        raise HTTPException(400, "Jumlah harus > 0")
-    
-    # Ambil stok saat ini
-    current = supabase.from_("stock").select("jumlah").eq("id", stock_id).execute()
-    if not current.data:
-        raise HTTPException(404, "Item stock tidak ditemukan")
-    
-    stok_sekarang = current.data[0]["jumlah"]
-    if stok_sekarang < jumlah:
-        raise HTTPException(400, f"Stok tidak cukup. Tersedia: {stok_sekarang}")
-    
-    baru = stok_sekarang - jumlah
-    result = supabase.from_("stock").update({
-        "jumlah": baru,
-        "last_updated": get_now_iso()
-    }).eq("id", stock_id).execute()
-
-    return result.data[0]
-
-
-# ==========================================
-# EXPENSES (PENGELUARAN OPERASIONAL)
-# ==========================================
-# Data finansial: semua endpoint di sini admin-only, konsisten dengan aturan
-# privasi harga/komisi -- teknisi dan drop point tidak perlu tahu pengeluaran.
-#
-# PENTING: /rekap-mingguan didefinisikan SEBELUM /{expense_id}. Kalau urutannya
-# terbalik, FastAPI menganggap "rekap-mingguan" sebuah id dan endpoint rekap
-# tidak pernah tercapai.
-
-@app.get("/api/expenses/rekap-mingguan", tags=["Expenses"])
-def rekap_mingguan_expenses(_: dict = Depends(require_role("admin"))):
-    """
-    Total pengeluaran per minggu (Senin-Minggu, zona WIB), 8 minggu terakhir.
-
-    Minggu dimulai Senin supaya rekap sejalan dengan pekan kerja outlet.
-    Ini jawaban atas pertanyaan rutin pemilik: "minggu ini habis berapa?"
-    """
-    sekarang = datetime.now(ZONA_WIB).date()
-    senin_ini = sekarang - timedelta(days=sekarang.weekday())
-    batas = senin_ini - timedelta(weeks=7)
-
-    baris = (
-        supabase.from_("expenses")
-        .select("kategori, jumlah, tanggal")
-        .gte("tanggal", batas.isoformat())
-        .execute().data or []
-    )
-
-    # Siapkan 8 slot minggu (termasuk yang kosong) supaya riwayat tidak
-    # melompat-lompat saat ada minggu tanpa pengeluaran.
-    slot: dict[str, dict] = {}
-    for i in range(8):
-        senin = batas + timedelta(weeks=i)
-        slot[senin.isoformat()] = {"senin": senin.isoformat(), "total": 0, "per_kategori": {}}
-
-    for r in baris:
-        try:
-            tgl = date.fromisoformat(str(r.get("tanggal"))[:10])
-        except ValueError:
-            continue
-        senin = tgl - timedelta(days=tgl.weekday())
-        sel = slot.get(senin.isoformat())
-        if sel is None:
-            continue  # di luar jendela 8 minggu (tanggal ganjil di data lama)
-        jumlah = r.get("jumlah") or 0
-        sel["total"] += jumlah
-        kat = r.get("kategori") or "lainnya"
-        sel["per_kategori"][kat] = sel["per_kategori"].get(kat, 0) + jumlah
-
-    return {
-        "minggu_ini": slot[senin_ini.isoformat()],
-        "riwayat": [slot[(batas + timedelta(weeks=i)).isoformat()] for i in range(8)],
-    }
-
-
-@app.post("/api/expenses", response_model=ExpenseResponse, status_code=status.HTTP_201_CREATED, tags=["Expenses"])
-def create_expense(item: ExpenseCreate, _: dict = Depends(require_role("admin"))):
-    kategori = _kategori_bersih(item.kategori)
-    if not kategori:
-        raise HTTPException(400, "Kategori wajib diisi")
-    data = {
-        "kategori": kategori,
-        "jumlah": item.jumlah,
-        # Default hari ini di zona WIB -- jangan NOW() dari server yang UTC,
-        # karena input lewat tengah malam WIB bisa masuk tanggal kemarin.
-        "tanggal": _tanggal_bersih(item.tanggal) or datetime.now(ZONA_WIB).date().isoformat(),
-        "keterangan": (item.keterangan or "").strip() or None,
-        "created_at": get_now_iso(),
-    }
-    result = supabase.from_("expenses").insert(data).execute()
-    if not result.data:
-        raise HTTPException(500, "Gagal mencatat pengeluaran")
-    return result.data[0]
-
-
-@app.get("/api/expenses", response_model=List[ExpenseResponse], tags=["Expenses"])
-def list_expenses(
-    response: Response,
-    _: dict = Depends(require_role("admin")),
-    kategori: Optional[str] = None,
-    dari: Optional[str] = None,
-    sampai: Optional[str] = None,
-    q: Optional[str] = None,
-    urut: str = "terbaru",
-    page: Optional[int] = None,
-    per_page: Optional[int] = None,
-):
-    """
-    Riwayat pengeluaran. Filter tanggal `dari`/`sampai` keduanya INKLUSIF
-    (kolomnya DATE, bukan timestamp -- batas eksklusif di sini justru
-    membuang pengeluaran tepat di tanggal `sampai`).
-    """
-    kat = _kategori_bersih(kategori)
-    tgl_dari = _tanggal_bersih(dari)
-    tgl_sampai = _tanggal_bersih(sampai)
-    cari = _cari_teks(q)
-
-    def bangun() -> object:
-        query = supabase.from_("expenses").select("*", count="exact")
-        if kat:
-            query = query.eq("kategori", kat)
-        if tgl_dari:
-            query = query.gte("tanggal", tgl_dari)
-        if tgl_sampai:
-            query = query.lte("tanggal", tgl_sampai)
-        if cari:
-            query = query.ilike("keterangan", f"%{cari}%")
-
-        if urut == "terlama":
-            return query.order("tanggal").order("created_at")
-        if urut == "nilai_tinggi":
-            return query.order("jumlah", desc=True)
-        if urut == "nilai_rendah":
-            return query.order("jumlah")
-        return query.order("tanggal", desc=True).order("created_at", desc=True)
-
-    if page is None:
-        return bangun().execute().data or []
-    return _halaman_berpaginan(bangun, page, per_page, response)
-
-
-@app.put("/api/expenses/{expense_id}", response_model=ExpenseResponse, tags=["Expenses"])
-def update_expense(expense_id: str, item: ExpenseUpdate, _: dict = Depends(require_role("admin"))):
-    data = item.model_dump(exclude_unset=True)
-    if "kategori" in data:
-        data["kategori"] = _kategori_bersih(data["kategori"])
-        if not data["kategori"]:
-            raise HTTPException(400, "Kategori wajib diisi")
-    if "tanggal" in data:
-        data["tanggal"] = _tanggal_bersih(data["tanggal"], wajib=True)
-    if "keterangan" in data:
-        data["keterangan"] = (data["keterangan"] or "").strip() or None
-    if not data:
-        raise HTTPException(400, "Tidak ada data yang diupdate")
-    result = supabase.from_("expenses").update(data).eq("id", expense_id).execute()
-    if not result.data:
-        raise HTTPException(404, "Catatan pengeluaran tidak ditemukan")
-    return result.data[0]
-
-
-@app.delete("/api/expenses/{expense_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Expenses"])
-def delete_expense(expense_id: str, _: dict = Depends(require_role("admin"))):
-    """Hapus catatan salah input. Hard delete: tidak ada tabel lain yang
-    mereferensikan expenses, jadi tidak ada risiko FK seperti pada sepatu."""
-    result = supabase.from_("expenses").delete().eq("id", expense_id).execute()
-    if not result.data:
-        raise HTTPException(404, "Catatan pengeluaran tidak ditemukan")
+    app.include_router(_router)

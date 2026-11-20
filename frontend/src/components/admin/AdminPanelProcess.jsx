@@ -70,7 +70,7 @@ export default function PanelProsesAdmin({
         defect_notes: catatanBaru || undefined,
       };
 
-      // 3. Panggil API (Token 'komang_sac_token' otomatis terpasang di sini)
+      // 3. Panggil API (Token 'cucisepatu_token' otomatis terpasang di sini)
       await transactionsApi.updateStatus(t.id, payload);
 
       toast.success(

@@ -1,5 +1,5 @@
 {
-  "name": "komang-sac-frontend",
+  "name": "solea-frontend",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint src",
-    "check": "eslint src && vite build"
+    "check": "eslint src && vite build",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "axios": "^1.6.7",
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.55.0",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.16",
     "eslint": "^9.39.5",

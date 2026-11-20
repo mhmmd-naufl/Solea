@@ -6,7 +6,7 @@ name: Cleanup Foto (TTL)
 # kolom foto di database.
 #
 # WAJIB diisi dulu di Settings > Secrets and variables > Actions:
-#   BACKEND_URL      contoh: https://komang-sac.up.railway.app (tanpa slash)
+#   BACKEND_URL      contoh: https://cuci-sepatu.up.railway.app (tanpa slash)
 #   CLEANUP_TOKEN    nilai yang sama dengan CLEANUP_TOKEN di .env backend
 #
 # CATATAN soal `if` di file ini:

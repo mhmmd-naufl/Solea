@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: komang-sac-backend
+    name: solea-backend
     env: python
     region: singapore  # Pilih region terdekat (singapore untuk Indonesia)
     plan: Free tier      # Free tier atau starter ($7/bulan)
@@ -22,10 +22,12 @@ services:
       - key: JWT_SECRET_KEY
         sync: false
       - key: BUSINESS_NAME
-        value: "Komang SAC"
+        value: "Solea"
       - key: BUSINESS_PHONE
         sync: false
       - key: FRONTEND_ORIGINS
         sync: false
       - key: RATE_LIMIT_ENABLED
         value: "true"
+      - key: APP_ENV
+        value: "production"

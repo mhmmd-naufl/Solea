@@ -19,6 +19,8 @@ env/
 node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/test-results/
+frontend/playwright-report/
 npm-debug.log*
 yarn-error.log*
 
@@ -50,11 +52,10 @@ Thumbs.db
 # Repo publik tidak boleh pernah ikut membawanya.
 /privat/
 
-# --- Proyek TERPISAH ---
-# Rentalyzer (sistem rental). Bukan bagian Komang SAC, punya repo git
-# sendiri, tidak ikut ter-commit. Folder tetap ada di disk -- hanya
-# diabaikan oleh git.
-Rentalyzer/
+# --- Folder proyek lain ---
+# Boleh dipakai untuk menyimpan proyek terpisah di mesin yang sama.
+# Folder tetap ada di disk, hanya diabaikan oleh git.
 
 # Backup database (berisi hash password & data pelanggan) - jangan pernah di-commit
-backup_komangsac_*.json
+backup_cucisepatu_*.json
+/backup_out/

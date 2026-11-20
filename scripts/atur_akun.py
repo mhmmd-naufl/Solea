@@ -1,16 +1,15 @@
 """
-Atur akun produksi Komang SAC sesuai keputusan owner:
+Atur akun produksi sesuai konfigurasi environment (bukan data merek tertentu).
 
-1. Hapus admin "Admin Komang SAC" (6289515758977) — sisakan satu admin yaitu
-   Achmad hasby (628980570911), nomor admin asli yang dipakai seed_dummy.
-2. Pastikan ada satu akun drop point untuk mitra "Dolay Cut"
-   (6289680841298, password default 'Password123' — wajib diganti setelah
-   login pertama lewat /api/auth/set-password).
-3. Pastikan drop point "Outlet Utama" (outlet sendiri) tercatat di tabel
-   drop_points supaya muncul di dropdown "Titik Penjemputan" saat booking.
+Variabel yang dipakai (semua opsional, lihat .env.example):
+  ADMIN_PHONE         - nomor admin yang dipertahankan
+  ADMIN_HAPUS_PHONE   - nomor admin lama yang ingin dihapus (kosong = lewati)
+  DP_PHONE            - nomor akun drop point mitra
+  DP_NAMA             - nama akun drop point mitra
+  DP_PASSWORD_DEFAULT - password awal akun mitra (wajib diganti setelah login)
+  BUSINESS_ADDRESS    - alamat untuk drop point "Outlet Utama"
 
-Idempoten: dijalankan ulang tidak menduplikasi apa pun. Baris drop_points
-(dalam table "Dolay Cut") tidak disentuh sama sekali.
+Idempoten: dijalankan ulang tidak menduplikasi apa pun.
 """
 import os
 import sys
@@ -21,35 +20,38 @@ from supabase import create_client
 
 load_dotenv()
 
-ADMIN_SISA_PHONE = "628980570911"   # Achmad hasby — tetap
-ADMIN_HAPUS_PHONE = "6289515758977" # Admin Komang SAC — dihapus
-DP_PHONE = "6289680841298"
-DP_NAMA = "Dolay Cut"
-DP_PASSWORD_DEFAULT = "Password123"
+ADMIN_SISA_PHONE = os.getenv("ADMIN_PHONE", "6280000000000").strip()
+ADMIN_HAPUS_PHONE = os.getenv("ADMIN_HAPUS_PHONE", "").strip()
+DP_PHONE = os.getenv("DP_PHONE", "6280000000000").strip()
+DP_NAMA = os.getenv("DP_NAMA", "Mitra Drop Point").strip()
+DP_PASSWORD_DEFAULT = os.getenv("DP_PASSWORD_DEFAULT", "Password123")
 
 # Import dari main supaya hashing identik dengan yang dibaca endpoint login.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from main import hash_password, verify_password  # noqa: E402
 
-url = os.getenv("SUPABASE_URL", "https://cssajztordwhsqaonzgn.supabase.co")
+url = os.getenv("SUPABASE_URL", "").strip()
 key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SERVICE_KEY")
-if not key:
-    sys.exit("ERROR: SUPABASE_SERVICE_ROLE_KEY belum diisi di .env")
+if not url or not key:
+    sys.exit("ERROR: SUPABASE_URL dan SUPABASE_SERVICE_ROLE_KEY wajib diisi di .env")
 c = create_client(url, key)
 
-# --- 1. Persis satu admin ---
-hapus = c.from_("profiles").select("id, full_name").eq("phone", ADMIN_HAPUS_PHONE).execute().data or []
-for row in hapus:
-    c.from_("profiles").delete().eq("id", row["id"]).execute()
-    print("Admin dihapus: %s (%s)" % (row["full_name"], ADMIN_HAPUS_PHONE))
-if not hapus:
-    print("Tidak ada admin %s untuk dihapus (sudah bersih)." % ADMIN_HAPUS_PHONE)
+# --- 1. Hapus admin lama hanya kalau nomornya memang dikonfigurasi ---
+if not ADMIN_HAPUS_PHONE:
+    print("ADMIN_HAPUS_PHONE kosong — tidak ada akun yang dihapus.")
+else:
+    hapus = c.from_("profiles").select("id, full_name").eq("phone", ADMIN_HAPUS_PHONE).execute().data or []
+    for row in hapus:
+        c.from_("profiles").delete().eq("id", row["id"]).execute()
+        print("Admin dihapus: %s (%s)" % (row["full_name"], ADMIN_HAPUS_PHONE))
+    if not hapus:
+        print("Tidak ada admin %s untuk dihapus (sudah bersih)." % ADMIN_HAPUS_PHONE)
 
 sisa = c.from_("profiles").select("id, full_name, phone").eq("role", "admin").execute().data or []
 print("Admin tersisa: %d -> %s" % (
     len(sisa), ", ".join("%s (%s)" % (a["full_name"], a["phone"]) for a in sisa)))
 
-# --- 2. Akun drop point Dolay Cut ---
+# --- 2. Akun drop point mitra ---
 ada = c.from_("profiles").select("id, full_name, role").eq("phone", DP_PHONE).execute().data or []
 if ada:
     print("Akun drop point sudah ada: %s (%s) — tidak diubah." % (ada[0]["full_name"], DP_PHONE))
@@ -69,13 +71,11 @@ else:
     print("Akun dibuat: %s | %s | password default %s" % (DP_NAMA, DP_PHONE, DP_PASSWORD_DEFAULT))
 
 # --- 3. Outlet utama sebagai titik penjemputan ---
-# Outlet Komang SAC sendiri harus selalu jadi pilihan di dropdown booking
-# ("Titik Penjemputan"), tidak hanya mitra Dolay Cut. Alamat mengikuti
-# BUSINESS_ADDRESS di .env supaya hanya ada satu sumber kebenaran.
+# Alamat mengikuti BUSINESS_ADDRESS di .env supaya hanya ada satu sumber kebenaran.
 OUTLET_NAMA = "Outlet Utama"
 OUTLET_ALAMAT = (
     os.getenv("BUSINESS_ADDRESS", "").strip()
-    or "Jl. Cisadane No.3, Lingkungan Mojoroto R, Singonegaran, Kec. Banyuwangi, Kabupaten Banyuwangi, Jawa Timur 68415"
+    or "Alamat outlet utama belum diisi di BUSINESS_ADDRESS"
 )
 ada_outlet = c.from_("drop_points").select("id, alamat").eq("nama", OUTLET_NAMA).execute().data or []
 if ada_outlet:

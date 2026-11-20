@@ -1,8 +1,8 @@
 r"""
 =============================================================
-Komang SAC — Seed DAFTAR HARGA ASLI
+Cuci Sepatu — Seed DAFTAR HARGA ASLI
 =============================================================
-Mengisi tabel `shoes` dengan price list Komang SAC yang sebenarnya, menggantikan
+Mengisi tabel `shoes` dengan price list Cuci Sepatu yang sebenarnya, menggantikan
 data dummy (Nike Air Force 1, Adidas Ultraboost, ...) jadi layanan asli.
 
 Satu baris `shoes` = satu VARIAN LAYANAN:
@@ -51,7 +51,7 @@ from supabase import create_client  # noqa: E402  (harus setelah load_dotenv)
 # ==============================================================
 # DAFTAR HARGA RESMI
 # ==============================================================
-# kelompok: 3 grup sesuai daftar harga Komang SAC
+# kelompok: 3 grup sesuai daftar harga Cuci Sepatu
 #   "Cuci Sepatu"          -> Shoes Cleaning
 #   "Bag, Hat & Helmet"    -> Bag Cleaning, Hat Cleaning, Helmet Cleaning
 #   "Repaint & Reglue"     -> Shoes Repaint, Shoes Reglue
@@ -304,7 +304,11 @@ DAFTAR_HARGA = [
     },
     {
         "kelompok": KELOMPOK_REPAINT,
-        "jenis_treatment": "Shoes Reglue",
+        # Jahit Sol adalah treatment sendiri, bukan varian "Shoes Reglue".
+        # Dulu jenis_treatment-nya "Shoes Reglue" sehingga di katalog dia
+        # muncul melebur ke dalam kartu Reglue dan rentang harga kartunya
+        # jadi salah (Rp25.000 - Rp120.000 untuk dua treatment berbeda).
+        "jenis_treatment": "Jahit Sol",
         "merk": "Jahit Sol",
         "model": "Standar",
         "harga_cuci": 25000,

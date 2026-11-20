@@ -1,11 +1,11 @@
 import axios from "axios";
 
-// Port backend Komang SAC = 8001 (port 8000 dipakai aplikasi lain).
+// Port backend = 8001 (port 8000 dipakai aplikasi lain).
 // Kosongkan VITE_API_BASE_URL kalau mau memakai proxy Vite (/api -> :8001).
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8001";
 
-export const TOKEN_KEY = "komang_sac_token";
+export const TOKEN_KEY = "cucisepatu_token";
 
 /** Ambil token valid dari localStorage, atau null kalau tidak ada / rusak. */
 function ambilToken() {
@@ -93,9 +93,12 @@ export const transactionsApi = {
   // Update field lain (ganti teknisi, layanan, catatan)
   update: (id, data) => api.put(`/api/transaksi/${id}`, data),
 
-  // Finalisasi harga (admin)
-  setHarga: (id, harga, alasan) =>
-    api.put(`/api/transaksi/${id}/harga`, { harga, alasan }),
+  // Finalisasi harga (admin). `diskon` opsional: potongan harga admin.
+  setHarga: (id, harga, alasan, diskon) =>
+    api.put(
+      `/api/transaksi/${id}/harga`,
+      { harga, alasan, ...(diskon !== undefined ? { diskon: Number(diskon) } : {}) },
+    ),
 
   // Upload foto. Header multipart wajib: default instance adalah JSON, dan
   // axios 1.x akan mengubah FormData jadi JSON kalau header itu terpasang.

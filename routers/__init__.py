@@ -1,0 +1,1 @@
+"""Modul router endpoint FastAPI."""

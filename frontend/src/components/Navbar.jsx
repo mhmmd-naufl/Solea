@@ -1,3 +1,4 @@
+import { BUSINESS_NAME } from '../config'
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { LogOut } from 'lucide-react'
@@ -45,9 +46,9 @@ export default function Navbar() {
         <nav className="container-main" aria-label="Navigasi utama">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2" aria-label="Komang SAC beranda">
+          <Link to="/" className="flex items-center gap-2" aria-label={`${BUSINESS_NAME} beranda`}>
             <Logo className="h-8 w-8" />
-            <span className="font-bold text-xl text-slate-900">Komang SAC</span>
+            <span className="font-bold text-xl text-slate-900">{BUSINESS_NAME}</span>
           </Link>
 
           {/* Navigasi desktop */}

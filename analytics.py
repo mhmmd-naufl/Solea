@@ -40,6 +40,8 @@ import urllib.error
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
+from config import BUSINESS_NAME
+
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # Model gratis. Urutan dicoba dari kiri ke kanan; kalau model pertama habis
@@ -848,7 +850,7 @@ def rule_based_saran(f: dict[str, Any]) -> list[str]:
 # ==========================================
 
 SYSTEM_PROMPT = """Kamu adalah analis operasional untuk bisnis cuci sepatu \
-yang beralamat di Jl. Cisadane No.3, Singonegaran, Banyuwangi. Kamu \
+yang beralamat di alamat usaha yang terdaftar. Kamu \
 menerima data agregat (angka, bukan data pribadi).
 
 Tugasmu HANYA dua hal:
@@ -924,8 +926,10 @@ def openrouter_insight(
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/mhmmd-naufl/Komang_SAC",
-            "X-Title": "Komang SAC Analytics",
+            "HTTP-Referer": os.getenv(
+                "APP_REPO_URL", "https://github.com/<owner>/<repo>"
+            ),
+            "X-Title": f"{BUSINESS_NAME} Analytics",
         },
         method="POST",
     )

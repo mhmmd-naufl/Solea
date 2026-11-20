@@ -1,4 +1,4 @@
-# blueprint.md — Cetakan Proyek Komang SAC
+# blueprint.md — Cetakan Proyek Cuci Sepatu
 
 > Cara pakai: kirim file ini ke AI + satu kalimat konteks, contoh:
 > *"Ikuti blueprint ini untuk membangun sistem manajemen cuci sepatu. Yang dipakai: stack, pola skema, modul auth, dashboard admin, dan ketentuan komisi. Yang tidak dipakai: paket jam, AI summary, dan scheduler."*

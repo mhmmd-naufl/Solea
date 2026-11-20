@@ -1,4 +1,4 @@
-# design.md (UI/UX Design System) — Komang SAC
+# design.md (UI/UX Design System) — Cuci Sepatu
 
 > Acuan desain seluruh frontend (`frontend/src`). Gaya: minimalis, mobile-first, bahasa Indonesia.
 
@@ -25,7 +25,7 @@
 |----------|-------------|
 | `Navbar.jsx` | Navigasi publik; dropdown user saat login; link "Admin" hanya untuk role admin |
 | `Catalog.jsx` | Grid cards publik: merk/model, badge treatment, keterangan, harga; klik → `BookingModal` |
-| `BookingModal.jsx` | 2 langkah — pilih treatment/drop point/bayar/catatan, lalu konfirmasi; hasil = kode tracking `KS-XXXXXX` |
+| `BookingModal.jsx` | 2 langkah — pilih treatment/drop point/bayar/catatan, lalu konfirmasi; hasil = kode tracking `TRX-XXXXXX` |
 | `StatusTracker.jsx` | Cari lewat kode tracking; progress vertikal 5 tahap; catatan pelanggan; tombol kabari admin saat siap diambil |
 | `LoginModal.jsx` | Halaman `/login`; tab Masuk / Daftar; simpan token JWT |
 | `AdminDashboard.jsx` | 4 kartu statistik, tabel transaksi terbaru, komisi per teknisi, daftar stok menipis |

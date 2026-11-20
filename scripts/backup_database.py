@@ -1,5 +1,5 @@
 """
-Backup seluruh tabel Komang SAC ke file JSON lokal.
+Backup seluruh tabel Cuci Sepatu ke file JSON lokal.
 
 Dipakai SEBELUM operasi penghapusan besar supaya ada salinan yang bisa
 dipulihkan: profile akun sampai transaksi. Pemaginasiannya memakai range()
@@ -16,6 +16,11 @@ from supabase import create_client, Client
 
 TABEL = ["profiles", "shoes", "drop_points", "transactions", "stock", "expenses"]
 HALAMAN = 1000
+
+# Bisa diarahkan ke folder lain, mis. BACKUP_OUTPUT_DIR=backup_out di GitHub Actions.
+OUTPUT_DIR = Path(
+    os.getenv("BACKUP_OUTPUT_DIR", str(Path(__file__).resolve().parent.parent))
+)
 
 
 def tarik_semua(supabase: Client, tabel: str) -> list:
@@ -40,7 +45,7 @@ def tarik_semua(supabase: Client, tabel: str) -> list:
 
 def cari_kunci() -> tuple:
     load_dotenv()
-    url = os.getenv("SUPABASE_URL", "https://cssajztordwhsqaonzgn.supabase.co")
+    url = os.environ["SUPABASE_URL"]
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SERVICE_KEY")
     if not key:
         print("ERROR: SUPABASE_SERVICE_ROLE_KEY belum diisi di .env")
@@ -62,7 +67,8 @@ def main():
             sys.exit(2)
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    keluar = Path(__file__).resolve().parent.parent / f"backup_komangsac_{stamp}.json"
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    keluar = OUTPUT_DIR / f"backup_cucisepatu_{stamp}.json"
     keluar.write_text(
         json.dumps(dump, ensure_ascii=False, indent=2),
         encoding="utf-8",

@@ -1,5 +1,5 @@
 -- =============================================================
--- Komang SAC — MIGRASI untuk database yang SUDAH ADA
+-- Cuci Sepatu — MIGRASI untuk database yang SUDAH ADA
 -- Jalankan di Supabase SQL Editor. Aman diulang (IF NOT EXISTS).
 -- -------------------------------------------------------------
 -- Menambahkan kolom yang dipakai main.py tapi belum ada:
@@ -58,7 +58,7 @@ ALTER TABLE stock ADD COLUMN IF NOT EXISTS created_at  TIMESTAMPTZ NOT NULL DEFA
 -- [6] shoes: DAFTAR HARGA ASLI + RENTANG HARGA
 -- -------------------------------------------------------------
 -- Tabel `shoes` berubah fungsi: sekarang satu baris = satu VARIAN LAYANAN
--- (bukan satu merk sepatu), karena Komang SAC selling by jenis treatment.
+-- (bukan satu merk sepatu), karena Cuci Sepatu selling by jenis treatment.
 -- Karena itu jenis_treatment harus bisa menyimpan nilai apa saja
 -- (Deep Cleaning, Unyellowing, Repaint, ...), bukan cuma 4 enum lama.
 --
@@ -104,7 +104,7 @@ CREATE INDEX IF NOT EXISTS idx_shoes_kelompok ON shoes (kelompok);
 -- =============================================================
 -- [7] ISI DATA AWAL (idempoten — aman dijalankan berulang)
 -- -------------------------------------------------------------
--- CATATAN: daftar harga asli Komang SAC (3 kelompok, ~27 varian) TIDAK
+-- CATATAN: daftar harga asli Cuci Sepatu (3 kelompok, ~27 varian) TIDAK
 -- ditulis di sini. Jalankan `seed_pricelist.py` supaya bisa pakai update
 -- atau skip per baris. SQL Editor tidak bisa mengulang baris dengan id tetap.
 -- =============================================================
@@ -113,17 +113,17 @@ CREATE INDEX IF NOT EXISTS idx_shoes_kelompok ON shoes (kelompok);
 INSERT INTO drop_points (nama, alamat, wa_contact, aktif)
 SELECT * FROM (VALUES
   ('Outlet Utama',
-   'Jl. Cisadane No.3, Lingkungan Mojoroto R, Singonegaran, Kec. Banyuwangi, Kabupaten Banyuwangi, Jawa Timur 68415',
-   '628980570911', TRUE),
-  ('Dolay Cut',
-   'Jl. Kyai Haji Wahid Hasyim No. 76, Kabupaten Banyuwangi',
-   '628980570911', TRUE)
+   'Alamat outlet utama',
+   '6280000000000', TRUE),
+  ('Mitra Drop Point',
+   'Alamat drop point mitra',
+   '6280000000000', TRUE)
 ) AS v(nama, alamat, wa_contact, aktif)
 WHERE NOT EXISTS (SELECT 1 FROM drop_points WHERE drop_points.nama = v.nama);
 
--- Admin (password: 'admin123' — GANTI setelah login pertama)
+-- Admin awal (password dibuat lewat bootstrap_admin.py — GANTI setelah login pertama)
 INSERT INTO profiles (full_name, phone, role, is_verified)
-SELECT 'Admin Komang SAC', '628980570911', 'admin', TRUE
+SELECT 'Admin', '6280000000000', 'admin', TRUE
 WHERE NOT EXISTS (SELECT 1 FROM profiles WHERE role = 'admin');
 
 -- Stock awal
@@ -256,18 +256,60 @@ BEGIN
 END $$;
 
 -- =============================================================
--- [8] RLS (opsional — JANGAN aktifkan sebelum backend pakai
---     service-role key, atau semua request dari frontend akan 401)
+-- [14] transactions: jenis_sepatu (wajib saat order) + diskon
+-- -------------------------------------------------------------
+-- 1. jenis_sepatu : JENIS/bahan sepatu yang dititipkan (Sneakers, Canvas,
+--    Leather, ...), dipilih konsumen di form booking. WAJIB menurut kode
+--    create, tapi bukan "NOT NULL" di database karena baris lama tidak
+--    punya nilainya.
+-- 2. nama_sepatu  : merk/nama sepatunya (cth. "Nike Air Force 1 putih"),
+--    diisi konsumen di form booking, wajib juga.
+-- 3. diskon       : potongan harga yang ditetapkan admin lewat endpoint
+--    finalisasi harga. NULL = belum pernah diatur (diperlakukan 0).
+--    Komisi teknisi dihitung dari harga bersih (harga - diskon), bukan
+--    harga kotor, supaya promo tidak ikut memotong komisi pengerja.
 -- =============================================================
--- ALTER TABLE profiles     ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE shoes        ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE drop_points  ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE stock        ENABLE ROW LEVEL SECURITY;
---
--- -- contoh: hanya admin/teknisi yang boleh baca & tulis stok
--- CREATE POLICY stock_admin_all ON stock
---   FOR ALL USING (
---     EXISTS (SELECT 1 FROM profiles p
---             WHERE p.id = auth.uid() AND p.role IN ('admin', 'technician'))
---   );
+
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS jenis_sepatu TEXT;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS nama_sepatu TEXT;
+
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS diskon INTEGER;
+
+ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_diskon_check;
+ALTER TABLE transactions
+    ADD CONSTRAINT transactions_diskon_check CHECK (
+        diskon IS NULL OR (diskon >= 0 AND diskon <= harga)
+    );
+
+-- Data reglue lama: "Jahit Sol" sempat diisin jenis_treatment
+-- "Shoes Reglue", jadi di katalog dia muncul sebagai varian di dalam kartu
+-- Reglue dan rentang harga kartunya jadi kacau. Jahit Sol itu treatment
+-- sendiri. Aman diulang.
+UPDATE shoes
+SET jenis_treatment = 'Jahit Sol'
+WHERE merk = 'Jahit Sol'
+  AND (jenis_treatment IS NULL OR jenis_treatment = 'Shoes Reglue');
+
+-- =============================================================
+-- [8] RLS — WAJIB, tapi dijalankan lewat rls.sql (terpisah)
+-- -------------------------------------------------------------
+-- Backend memakai service-role key yang melewati RLS, frontend tidak
+-- mengakses tabel langsung. Jalankan `rls.sql` di Supabase SQL Editor
+-- setelah migrate.sql selesai, sebelum aplikasi dibuka ke publik.
+-- =============================================================
+
+-- =============================================================
+-- [9] audit_log — jejak aksi sensitif
+-- =============================================================
+CREATE TABLE IF NOT EXISTS public.audit_log (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    actor_id    UUID,
+    actor_nama  TEXT,
+    aksi        TEXT NOT NULL,
+    target_tipe TEXT,
+    target_id   TEXT,
+    detail      JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_audit_created_at ON public.audit_log (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_actor      ON public.audit_log (actor_id);

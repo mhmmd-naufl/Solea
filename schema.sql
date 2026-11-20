@@ -1,5 +1,5 @@
 -- =============================================================
--- Komang SAC — Schema PostgreSQL (Supabase)
+-- Cuci Sepatu — Schema PostgreSQL (Supabase)
 -- Jalankan file ini di Supabase SQL Editor untuk instalasi BARU.
 -- Sudah punya database? Gunakan migrate.sql, bukan file ini.
 -- =============================================================
@@ -21,7 +21,7 @@ CREATE INDEX IF NOT EXISTS idx_profiles_phone ON profiles (phone);
 
 -- ---------- 2. shoes (Master Layanan / Price List) ----------
 -- CATATAN: tabel ini bukan "master sepatu" per-merk lagi. Satu baris = satu
--- VARIAN LAYANAN (cth. "Deep Cleaning / White"), karena daftar harga Komang SAC
+-- VARIAN LAYANAN (cth. "Deep Cleaning / White"), karena daftar harga Cuci Sepatu
 -- selling by jenis TREATMENT, bukan by brand. Kolom merk dipakai untuk nama
 -- layanannya dan model untuk variannya, supaya struktur lama tetap kepakai.
 --
@@ -77,7 +77,7 @@ CREATE INDEX IF NOT EXISTS idx_drop_points_aktif ON drop_points (aktif);
 -- karena kolomnya memakai FK ke tabel-tabel tersebut.
 CREATE TABLE IF NOT EXISTS transactions (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    kode              TEXT        UNIQUE,                 -- nomor tracking untuk konsumen, cth. KS-7F3K9Q
+    kode              TEXT        UNIQUE,                 -- nomor tracking untuk konsumen, cth. TRX-7F3K9Q
     user_id           UUID        NOT NULL REFERENCES profiles (id)    ON DELETE RESTRICT,
     shoe_id           UUID        NOT NULL REFERENCES shoes (id)        ON DELETE RESTRICT,
     tech_id           UUID                  REFERENCES profiles (id)    ON DELETE SET NULL,
@@ -92,6 +92,28 @@ CREATE TABLE IF NOT EXISTS transactions (
 
     catatan_konsumen TEXT,                                 -- diisi konsumen saat titip
     defect_notes     TEXT,                                 -- cacat bawaan, diisi teknisi
+
+    -- Jenis sepatu yang dititip (Sneakers, Canvas, Leather, ...). Diisi WAJIB
+    -- konsumen lewat dropdown saat order; validasi keharusan di kode create
+    -- (main.py), bukan NOT NULL, karena baris lama tidak punya nilai ini.
+    jenis_sepatu     TEXT,
+
+    -- Nama/merk sepatu yang dititip (cth. "Nike Air Force 1 putih").
+    -- Diisi WAJIB konsumen di form booking, selangkah sebelum tombol booking.
+    nama_sepatu      TEXT,
+
+    -- Potongan harga yang ditetapkan admin lewat finalisasi harga.
+    -- NULL = belum pernah diatur, diperlakukan 0. Komisi teknisi dihitung
+    -- dari harga bersih (harga - diskon), supaya promo tidak ikut memotong
+    -- komisi pengerja.
+    diskon           INTEGER CHECK ((diskon IS NULL) OR (diskon >= 0 AND diskon <= harga)),
+
+    -- Pembayaran via gateway (opsional). Kosong kalau gateway tidak dipakai.
+    payment_method      TEXT,
+    payment_reference   TEXT,
+    payment_status      TEXT NOT NULL DEFAULT 'unpaid'
+                        CHECK (payment_status IN ('unpaid', 'pending', 'paid', 'failed')),
+    payment_checkout_url TEXT,
 
     -- hanya 2 foto: sebelum & sesudah (TIDAK ada foto proses)
     photo_before     TEXT,
@@ -149,10 +171,24 @@ CREATE TRIGGER trg_transactions_updated_at
     BEFORE UPDATE ON transactions
     FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
+-- ---------- 7. audit_log (jejak aksi sensitif) ----------
+CREATE TABLE IF NOT EXISTS public.audit_log (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    actor_id    UUID,
+    actor_nama  TEXT,
+    aksi        TEXT NOT NULL,
+    target_tipe TEXT,
+    target_id   TEXT,
+    detail      JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_audit_created_at ON public.audit_log (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_actor      ON public.audit_log (actor_id);
+
 -- =============================================================
 -- CATATAN KEAMANAN
--- RLS belum diaktifkan (semua tabel terbuka untuk anon key).
--- WAJIB aktifkan RLS + policy sebelum deploy ke publik, atau
--- pindahkan pemanggilan DB ke service-role key di backend saja.
--- Lihat migrate.sql bagian [7] untuk contoh policy.
+-- Backend memakai service-role key (melewati RLS); frontend tidak pernah
+-- mengakses tabel langsung. SETELAH schema.sql ini dijalankan, jalankan
+-- juga rls.sql supaya anon/authenticated tidak bisa membaca tabel apa pun.
+-- Lihat rls.sql untuk detail dan cara verifikasinya.
 -- =============================================================

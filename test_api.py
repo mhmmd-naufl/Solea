@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 import main  # noqa: E402
 
 PASSWORD = "password123"
+ADMIN_PHONE = os.getenv("ADMIN_PHONE", "6280000000000")
 
 client = TestClient(main.app)
 
@@ -45,7 +46,7 @@ section("1. Login per role")
 
 tokens = {}
 for phone, role in [
-    ("628980570911", "admin"),
+    (ADMIN_PHONE, "admin"),
     ("628991000001", "technician"),
     ("628981000001", "customer"),
     ("628991000004", "drop_point"),
@@ -67,7 +68,7 @@ for phone, role in [
 client_tech_id = main.supabase.from_("profiles").select("id").eq("phone", "628991000001").execute().data[0]["id"]
 
 # password salah harus ditolak
-r = client.post("/api/auth/login", json={"phone": "628980570911", "password": "salah"})
+r = client.post("/api/auth/login", json={"phone": ADMIN_PHONE, "password": "salah"})
 check("password salah ditolak", r.status_code in (401, 403), f"HTTP {r.status_code}")
 
 # nomor tidak ada
@@ -94,7 +95,7 @@ if sample:
         check("  -> info drop point ikut terbaca", bool(data.get("drop_point", {}).get("nama")),
               str(data.get("drop_point"))[:80])
 
-r = client.get("/api/transaksi/tracking/KS-TIDAKADA")
+r = client.get("/api/transaksi/tracking/TRX-TIDAKADA")
 check("kode ngawur ditolak", r.status_code == 404, f"HTTP {r.status_code}")
 
 
@@ -609,7 +610,7 @@ section("19. Ganti pengerja & komisi per role (admin mengerjakan sendiri = 0)")
 
 # Id-butuh: admin login, teknisi dummy, dan satu layanan master.
 admin_id = (
-    main.supabase.from_("profiles").select("id").eq("phone", "628980570911").execute().data[0]["id"]
+    main.supabase.from_("profiles").select("id").eq("phone", ADMIN_PHONE).execute().data[0]["id"]
 )
 if "admin" in tokens and admin_id and client_tech_id:
     layanan = client.get("/api/sepatu").json()

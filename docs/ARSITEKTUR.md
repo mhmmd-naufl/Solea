@@ -1,4 +1,4 @@
-# Arsitektur — Komang SAC
+# Arsitektur — Cuci Sepatu
 
 Dokumen ini menjelaskan bagian dalam sistem secara mendetail. Untuk gambaran
 singkat dan cara menjalankan, lihat [README](../README.md).
@@ -30,7 +30,7 @@ singkat dan cara menjalankan, lihat [README](../README.md).
           │  analytics.py          │   │  Supabase                │
           │  angka deterministik   │   │  PostgreSQL (6 tabel)    │
           │  + narasi AI (opsional)│   │  Storage (foto sepatu)   │
-          │  + fallback aturan     │   │  RLS: aktif di expenses  │
+          │  + fallback aturan     │   │  RLS aktif di 6 tabel  │
           └────────────────────────┘   └──────────────────────────┘
 ```
 
@@ -42,7 +42,7 @@ seluruh aturan RBAC bisa ditegakkan di satu tempat (backend).
 | Route | Akses | Isi |
 |---|---|---|
 | `/` | publik | Katalog harga |
-| `/status` | publik | Lacak status cucian (`KS-XXXXXX`) |
+| `/status` | publik | Lacak status cucian (`TRX-XXXXXX`) |
 | `/login` | publik | Masuk |
 | `/admin` | admin | Dashboard omzet, stok, komisi |
 | `/admin/sepatu` | admin | Master layanan & harga |
@@ -66,7 +66,7 @@ manage_users.py       Lihat daftar akun + reset password
 check_schema.py       Cek apakah kolom database sudah lengkap
 check_auth.py         Audit: endpoint mana yang belum diproteksi auth
 seed_dummy.py         Isi data dummy (konsumen, teknisi, transaksi, stock)
-seed_pricelist.py     Isi 27 layanan asli Komang SAC (idempoten)
+seed_pricelist.py     Isi master layanan & harga (idempoten)
 test_api.py           Uji endpoint + RBAC (in-process, tanpa server)
 schema.sql            DDL untuk instalasi database BARU
 migrate.sql           Untuk database yang sudah ada (aman diulang)
@@ -91,7 +91,6 @@ frontend/             React + Vite + Tailwind
 
 docs/                 Dokumentasi lengkap (arsitektur, operasional, PRD, design)
 
-Rentalyzer/           Proyek TERPISAH (sistem rental, repo git sendiri) — bukan bagian Komang SAC
 ```
 
 ---
@@ -111,12 +110,12 @@ expenses         (mandiri — pengeluaran operasional)
 
 | Tabel | Isi | Catatan penting |
 |---|---|---|
-| `profiles` | Admin, pelanggan, teknisi, mitra | `password_hash` PBKDF2-SHA256, `role` ber-CHECK |
+| `profiles` | Admin, pelanggan, teknisi, mitra | `password_hash` Argon2id (hash PBKDF2 lama tetap diterima), `role` ber-CHECK |
 | `shoes` | Master **layanan**, bukan per-merk | Satu baris = satu varian layanan. Harga bisa rentang (`harga_min`/`harga_max`) |
 | `drop_points` | Outlet & mitra | |
 | `transactions` | Transaksi cuci | `kode` unik untuk tracking, `grup_id` untuk booking multi-pasang |
 | `stock` | Alat & bahan | `batas_minimum` untuk alarm stok menipis |
-| `expenses` | Pengeluaran operasional | RLS **sudah** aktif di tabel ini |
+| `expenses` | Pengeluaran operasional | RLS aktif (sama seperti tabel lain, lewat `rls.sql`) |
 
 Kolom yang perlu diketahui:
 
@@ -153,7 +152,7 @@ cuma aplikasi.
 | GET          | `/api/sepatu/{id}`               | —             | Detail satu layanan                                            |
 | GET          | `/api/drop-points`               | —             | Lokasi mitra publik                                             |
 | GET          | `/api/drop-points/{id}`          | —             | Detail satu mitra                                              |
-| GET          | `/api/transaksi/tracking/{kode}` | —             | Cek status publik (`KS-XXXXXX`). Ikut `grup_id`, estimasi, dan foto |
+| GET          | `/api/transaksi/tracking/{kode}` | —             | Cek status publik (`TRX-XXXXXX`). Ikut `grup_id`, estimasi, dan foto |
 | GET          | `/api/transaksi/grup/{grup_id}`  | —             | Semua pasang dalam booking multi-pasang (kode+status+layanan)  |
 | POST         | `/api/transaksi`                 | JWT           | Buat booking. Konsumen = atas namanya sendiri. `payment_method` divalidasi terhadap `ACCEPTED_PAYMENTS` |
 | GET          | `/api/transaksi`                 | JWT           | Konsumen: miliknya. Teknisi: tugasnya. Admin/mitra: semua. `dari_selesai`/`sampai_selesai` untuk laporan (berbeda dari `dari`/`sampai` yang memakai tanggal masuk)      |
@@ -545,14 +544,14 @@ curl -X POST http://localhost:8001/internal/cleanup-fotos \
 
 ## 10. Catatan Keamanan
 
-- **Password** disimpan sebagai hash PBKDF2-SHA256 — tidak bisa dibaca balik.
+- **Password** disimpan sebagai hash Argon2id — tidak bisa dibaca balik. Hash PBKDF2 lama masih diverifikasi supaya user existing tidak perlu reset.
   Reset lewat `manage_users.py`.
 - **JWT** HS256, `JWT_SECRET_KEY` wajib acak. Kalau kosong, backend berhenti
   saat start (fail-fast), bukan jalan dengan secret lemah.
 - **Service-role key** hanya di backend. Tidak pernah ditaruh di `frontend/`.
-- **RLS** saat ini baru aktif di tabel `expenses`. Policy untuk 5 tabel lain
-  masih terkomentari di `migrate.sql` bagian [7] — **aktifkan sebelum deploy
-  ke publik**, kalau tidak anon key masih bisa membaca semua tabel.
+- **RLS** aktif di keenam tabel lewat `rls.sql` (jalankan sebelum deploy).
+  Tidak ada policy untuk anon/authenticated, jadi keduanya tidak bisa membaca
+  tabel apa pun. Backend memakai service-role yang melewati RLS.
 - **Guard CI** gagal kalau `.env` atau folder `privat/` ikut ter-commit.
 
 - **Audit proteksi endpoint** (`check_auth.py`) membedakan tiga jenis

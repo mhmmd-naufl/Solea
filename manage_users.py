@@ -1,7 +1,7 @@
 """
 Kelola akun: lihat daftar user dan reset password.
 
-Password di database tersimpan sebagai hash PBKDF2-SHA256, jadi TIDAK bisa
+Password di database tersimpan sebagai hash Argon2id, jadi TIDAK bisa
 dibaca balik. Kalau lupa password, satu-satunya cara recover adalah reset
 lewat script ini.
 
@@ -9,7 +9,7 @@ Cara pakai:
     python manage_users.py                    # daftar semua akun
     python manage_users.py list               # sama seperti di atas
     python manage_users.py list technician    # filter per role
-    python manage_users.py reset 628980570911 "PasswordBaru123"
+    python manage_users.py reset 6280000000000 "PasswordBaru123"
 
 Role yang tersedia: admin, customer, technician, drop_point
 """

@@ -10,10 +10,7 @@ Dibangun production-grade dengan **Supabase + FastAPI + React**, RLS di semua ta
 
 **Live demo:** [https://solea-ten-pi.vercel.app](https://solea-ten-pi.vercel.app) — login: `6280000000000` / `admin123`
 
-| | | | |
-|:---:|:---:|:---:|:---:|
-| <img src="frontend/public/screenshoots/Login.png" width="100%" /> | <img src="frontend/public/screenshoots/Dashboard.png" width="100%" /> | <img src="frontend/public/screenshoots/Katalog.png" width="100%" /> | <img src="frontend/public/screenshoots/Detail Sepatu.png" width="100%" /> |
-| <img src="frontend/public/screenshoots/Buat Transaksi.png" width="100%" /> | <img src="frontend/public/screenshoots/Stok.png" width="100%" /> | <img src="frontend/public/screenshoots/User.png" width="100%" /> | |
+<img src="frontend/public/screenshoots/Dashboard.png" alt="Dashboard Solea" />
 
 ## Features
 
@@ -125,29 +122,21 @@ Keduanya harus bernilai sama. Ikon & favicon generik, bisa diganti aset sendiri.
 
 | Perintah | Fungsi |
 |:---|:---|
-| `python setup_env.py` | Membuat/melengkapi `.env` |
 | `python seed_direct.py` | Seed layanan, admin, stock, drop point |
-| `python scripts/seed_demo.ps1` | Seed data demo (transaksi, teknisi, pelanggan) |
-| `python scripts/update_txn_status.py` | Update status + selesai_at untuk data demo |
-| `python check_schema.py` | Cek kolom database |
-| `python check_auth.py` | Audit proteksi endpoint |
-| `python test_api.py` | Uji endpoint & RBAC |
 | `python scripts/backup_database.py` | Backup ke JSON lokal |
 | `python scripts/hitung_ulang_komisi.py` | Hitung ulang komisi teknisi |
 
 ## Testing
 
+Frontend:
 ```bash
 cd frontend
 npm run lint        # ESLint
 npm run build       # Vite build
 npm run check       # lint + build
-npm run test:e2e    # Playwright
 ```
 
-Backend: `check_schema.py`, `check_auth.py`, `test_api.py`.
-
-CI (`.github/workflows/ci.yml`): lint + build, `py_compile`, smoke test `import main`.
+Backend: `python test_api.py` (jika ada) atau manual.
 
 ## Deployment
 

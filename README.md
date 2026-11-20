@@ -9,23 +9,69 @@ sendiri, teknisi kerjakan sesuai antrean, admin pantau omzet & komisi real-time.
 Dibangun production-grade: **Supabase + FastAPI + React**, dengan RLS di semua
 tabel, audit log, backup otomatis, dan titik integrasi pembayaran.
 
-[Fitur](#-fitur) · [Arsitektur](#-arsitektur) · [Mulai Cepat](#-mulai-cepat) ·
-[Lisensi](#-lisensi) · [Dokumentasi](#-dokumentasi)
+<div align="center">
+  <img src="frontend/public/screenshoots/Dashboard.png" alt="Dashboard Solea" width="100%" />
+</div>
+
+**Preview Live:** [https://solea-ten-pi.vercel.app](https://solea-ten-pi.vercel.app)
+
+| Login | `6280000000000` / `admin123` |
+
+[Fitur](#-fitur) · [Tampilan](#-tampilan) · [Arsitektur](#-arsitektur) ·
+[Mulai Cepat](#-mulai-cepat) · [Lisensi](#-lisensi)
 
 ---
 
-## Mengapa Solea
+## 📸 Tampilan
 
-| Tantangan usaha cucian | Cara Solea menyelesaikannya |
-| :--- | :--- |
-| Catat manual, mudah salah & hilang | Data terpusat, tervalidasi di backend |
-| Pelanggan bertanya-tanya "sudah mau jadi?" | Halaman tracking publik + notifikasi WhatsApp |
-| Tidak jelas omzet & komisi teknisi | Dashboard analitik deterministik + audit log |
-| Rawan kebocoran data | RLS aktif di semua tabel, frontend tak akses DB langsung |
+### Dashboard Admin
+Statistik omzet, distribusi status, kinerja teknisi, tren bulanan — semua dihitung deterministik di backend.
 
-**Siap produksi, bukan template setengah jadi.** Auth, RBAC, pembayaran,
-backup, dan CI sudah tersedia dari awal. Anda tinggal ganti merek & kontak
-lewat variabel environment — tanpa menyunting kode.
+<div align="center">
+  <img src="frontend/public/screenshoots/Dashboard.png" alt="Dashboard" width="60%" />
+</div>
+
+### Login
+Halaman masuk dengan validasi format nomor & tampilan password.
+
+<div align="center">
+  <img src="frontend/public/screenshoots/Login.png" alt="Login" width="40%" />
+</div>
+
+### Katalog Sepatu
+Daftar layanan (master data & harga) yang bisa difilter & dikelola admin.
+
+<div align="center">
+  <img src="frontend/public/screenshoots/Katalog.png" alt="Katalog" width="80%" />
+</div>
+
+### Detail Sepatu
+Detail satu layanan lengkap dengan rentang harga, estimasi hari, dan keterangan treatment.
+
+<div align="center">
+  <img src="frontend/public/screenshoots/Detail Sepatu.png" alt="Detail Sepatu" width="60%" />
+</div>
+
+### Buat Transaksi
+Form booking multi-pasang dengan validasi jenis & nama sepatu, metode bayar, catatan konsumen.
+
+<div align="center">
+  <img src="frontend/public/screenshoots/Buat Transaksi.png" alt="Buat Transaksi" width="70%" />
+</div>
+
+### Manajemen Stok
+Tabel stok alat & bahan dengan indikator kritis (di bawah batas minimum).
+
+<div align="center">
+  <img src="frontend/public/screenshoots/Stok.png" alt="Stok" width="80%" />
+</div>
+
+### Manajemen Pengguna
+CRUD user: admin, teknisi, pelanggan, drop point — termasuk reset password & audit log.
+
+<div align="center">
+  <img src="frontend/public/screenshoots/User.png" alt="Users" width="80%" />
+</div>
 
 ---
 
@@ -81,9 +127,8 @@ di semua tabel — jadi bocornya anon key pun tidak membuka data.
 1. **Backend** — clone, buat venv, `pip install -r requirements.txt`.
 2. **Environment** — salin `.env.example` → `.env`, isi `SUPABASE_URL`,
    `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET_KEY` (atau `python setup_env.py`).
-3. **Database** — jalankan SQL di Supabase: `schema.sql` (baru) atau
-   `migrate.sql` + `audit_log.sql` + `payments.sql` (lama), lalu
-   **`rls.sql` (wajib)**, kemudian `seed_pricelist.py` & `bootstrap_admin.py`.
+3. **Database** — jalankan `SETUP_SOLEA.sql` di Supabase, lalu
+   `python seed_direct.py`.
 4. **Frontend** — di `frontend/`: `npm ci`, salin `.env.example` → `.env`,
    `npm run dev`; jalankan backend di port 8001. Buka **http://localhost:3000**.
 
@@ -114,15 +159,15 @@ disebarluaskan untuk evaluasi dan pembelajaran.
 ├── config.py               # BUSINESS_NAME, TRACKING_PREFIX, APP_ENV
 ├── notifications.py        # Adapter WhatsApp (best-effort)
 ├── payments.py             # Adapter gateway pembayaran
-├── schema.sql / migrate.sql# Skema baru / migrasi lama
-├── rls.sql                 # RLS + kunci akses anon (wajib)
-├── audit_log.sql / payments.sql
-├── seed_*.py / bootstrap_admin.py / setup_env.py
+├── SETUP_SOLEA.sql         # Skema + RLS + GRANTs (satu file, idempotent)
+├── seed_direct.py          # Seed layanan, admin, stock, drop point
 ├── check_*.py, test_api.py # Pemeriksa skema & audit auth
-├── scripts/                # Backup, komisi, utilitas
+├── scripts/                # Backup, komisi, seed demo, utilitas
 ├── frontend/               # React (rute lazy-loaded) + tes Playwright
+│   ├── public/screenshots/ # Screenshot untuk README
+│   └── src/
 ├── docs/                   # PRD, arsitektur, panduan, serah terima
-└── .github/workflows/      # CI, cleanup foto, backup harian
+└── .github/workflows/      # CI, cleanup foto, backup harian, deploy Fly.io
 ```
 
 ---
@@ -137,7 +182,7 @@ disebarluaskan untuk evaluasi dan pembelajaran.
 git clone https://github.com/mhmmd-naufl/Solea.git
 cd Solea
 python -m venv .venv
-.\\.venv\\Scripts\\Activate.ps1     # Windows
+.\.venv\Scripts\Activate.ps1     # Windows
 source .venv/bin/activate        # macOS/Linux
 pip install -r requirements.txt
 ```
@@ -156,14 +201,13 @@ Jalankan di **Supabase SQL Editor**:
 
 | Kondisi | File |
 | :--- | :--- |
-| Database baru | `schema.sql` |
-| Database lama | `migrate.sql`, lalu `audit_log.sql`, `payments.sql` |
-| Semua kondisi | **`rls.sql`** (wajib, sebelum dibuka publik) |
+| Database baru | `SETUP_SOLEA.sql` |
+| Database lama (migrasi) | `schema.sql` + `audit_log.sql` + `payments.sql` |
+| Semua kondisi | RLS & GRANTs sudah di `SETUP_SOLEA.sql` |
 
 Lalu:
 ```bash
-python seed_pricelist.py      # master layanan & harga
-python bootstrap_admin.py     # admin baru — sandi acak, ganti setelah login
+python seed_direct.py      # seed layanan, admin, stock, drop point
 ```
 
 ### 4. Frontend
@@ -212,9 +256,9 @@ Keduanya harus bernilai sama. Ikon & favicon generik, bisa diganti aset sendiri.
 | Perintah | Fungsi |
 | :--- | :--- |
 | `python setup_env.py` | Membuat/melengkapi `.env` |
-| `python seed_pricelist.py` | Isi master layanan & harga |
-| `python seed_dummy.py` / `--reset` | Isi / hapus data dummy |
-| `python bootstrap_admin.py` | Buat admin / reset sandi |
+| `python seed_direct.py` | Seed layanan, admin, stock, drop point |
+| `python scripts/seed_demo.ps1` | Seed data demo (transaksi, teknisi, pelanggan) |
+| `python scripts/update_txn_status.py` | Update status + selesai_at untuk data demo |
 | `python check_schema.py` | Cek kolom database |
 | `python check_auth.py` | Audit proteksi endpoint |
 | `python test_api.py` | Uji endpoint & RBAC |
@@ -242,10 +286,18 @@ CI (`.github/workflows/ci.yml`) menjalankan lint + build, `py_compile`, smoke te
 
 ## 🚢 Deployment
 
-- **Backend:** `render.yaml` (Render) atau `Procfile` (Railway), menjalankan `uvicorn main:app --host 0.0.0.0 --port $PORT`.
-- **Frontend:** `npm run build`, deploy `frontend/dist` ke hosting statis; set `VITE_API_BASE_URL` & `VITE_BUSINESS_NAME`.
+- **Backend:** `fly.toml` + `Dockerfile` (Fly.io) atau `render.yaml` (Render) atau `Procfile` (Railway).
+- **Frontend:** `vercel.json` (Vercel) atau `npm run build` ke hosting statis mana pun.
 - Set `APP_ENV=production` + `FRONTEND_ORIGINS`. Tanpa keduanya, backend sengaja gagal start daripada membuka CORS.
-- Jalankan `rls.sql` **sebelum** aplikasi dibuka publik.
+- Jalankan `SETUP_SOLEA.sql` (termasuk RLS) **sebelum** aplikasi dibuka publik.
+- Deploy otomatis: `.github/workflows/fly-deploy.yml` trigger push ke `main`.
+
+### Live Instance
+| Komponen | URL |
+| :--- | :--- |
+| Frontend | https://solea-ten-pi.vercel.app |
+| Backend | https://solea-backend.fly.dev |
+| Database | Supabase (txeudyvncawbvubcvjaq) |
 
 ---
 

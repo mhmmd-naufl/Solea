@@ -2,61 +2,40 @@
 
 > Sistem operasional laundry sepatu — full-stack, produksi-ready.
 
-Solea mengubah cara kerja usaha cucian sepatu: dari catat manual yang rawan
-*human error* menjadi sistem terpusat. Pelanggan booking & pantau status
-sendiri, teknisi kerjakan sesuai antrean, admin pantau omzet & komisi real-time.
+Solea mengubah cara kerja usaha cucian sepatu: dari catat manual yang rawan *human error* menjadi sistem terpusat. Pelanggan booking & pantau status sendiri, teknisi kerjakan sesuai antrean, admin pantau omzet & komisi real-time.
 
-Dibangun production-grade: **Supabase + FastAPI + React**, dengan RLS di semua
-tabel, audit log, backup otomatis, dan titik integrasi pembayaran.
+Dibangun production-grade dengan **Supabase + FastAPI + React**, RLS di semua tabel, audit log, backup otomatis, dan titik integrasi pembayaran.
 
-<div align="center">
-  <img src="frontend/public/screenshoots/Dashboard.png" alt="Dashboard Solea" width="100%" />
-</div>
+## Preview
 
-**Preview Live:** [https://solea-ten-pi.vercel.app](https://solea-ten-pi.vercel.app)
+**Live demo:** [https://solea-ten-pi.vercel.app](https://solea-ten-pi.vercel.app) — login: `6280000000000` / `admin123`
 
-| Login | `6280000000000` / `admin123` |
-
-[Fitur](#-fitur) · [Tampilan](#-tampilan) · [Arsitektur](#-arsitektur) ·
-[Mulai Cepat](#-mulai-cepat) · [Lisensi](#-lisensi)
-
----
-
-## 📸 Tampilan
-
-| Login | Dashboard | Katalog | Detail Sepatu |
-| :---: | :---: | :---: | :---: |
+| | | | |
+|:---:|:---:|:---:|:---:|
 | <img src="frontend/public/screenshoots/Login.png" width="100%" /> | <img src="frontend/public/screenshoots/Dashboard.png" width="100%" /> | <img src="frontend/public/screenshoots/Katalog.png" width="100%" /> | <img src="frontend/public/screenshoots/Detail Sepatu.png" width="100%" /> |
+| <img src="frontend/public/screenshoots/Buat Transaksi.png" width="100%" /> | <img src="frontend/public/screenshoots/Stok.png" width="100%" /> | <img src="frontend/public/screenshoots/User.png" width="100%" /> | |
 
-| Buat Transaksi | Stok | User |
-| :---: | :---: | :---: |
-| <img src="frontend/public/screenshoots/Buat Transaksi.png" width="100%" /> | <img src="frontend/public/screenshoots/Stok.png" width="100%" /> | <img src="frontend/public/screenshoots/User.png" width="100%" /> |
-
----
-
-## ✨ Fitur
+## Features
 
 **Alur status:** `Diterima` → `Diproses` → `Diperiksa` → `Selesai` → `Siap Diambil`
 
 | Peran | Yang bisa dilakukan |
-| :--- | :--- |
+|:---|:---|
 | **Pelanggan** | Booking multi-pasang, cek status + foto bukti, riwayat |
 | **Teknisi** | Antrean tugas, update progres, wajib foto sebelum "Selesai" |
 | **Admin** | Dashboard omzet/stok/komisi, master harga, audit log |
 | **Mitra (drop point)** | Input transaksi outlet, pantau performa cabang |
 
-### Fitur produksi yang sudah termasuk
+### Production-ready
 
-- 🔔 **Notifikasi WhatsApp** — otomatis saat booking & perubahan status (adapter gateway apa pun).
-- 🧾 **Audit log** — jejak aksi sensitif (reset sandi, ubah harga, hapus data) via `GET /api/audit-log`.
-- 💳 **Pembayaran** — titik integrasi gateway QRIS/VA. Tanpa provider, endpoint mengembalikan 503 yang jelas, bukan QRIS palsu.
-- 📊 **Analitik deterministik** — angka dihitung di backend; AI hanya membuat narasi, dengan fallback bila provider gagal.
-- 🔒 **Keamanan berlapis** — Argon2id, RBAC, rate limiting, CORS fail-closed di produksi, RLS Supabase.
-- 🔄 **Backup otomatis** — workflow harian + offsite S3/R2 opsional.
+- **Notifikasi WhatsApp** — otomatis saat booking & perubahan status
+- **Audit log** — jejak aksi sensitif (reset sandi, ubah harga, hapus data)
+- **Pembayaran** — titik integrasi gateway QRIS/VA; tanpa provider, endpoint mengembalikan 503 yang jelas
+- **Analitik deterministik** — angka dihitung di backend; AI hanya membuat narasi, dengan fallback
+- **Keamanan berlapis** — Argon2id, RBAC, rate limiting, CORS fail-closed di produksi, RLS Supabase
+- **Backup otomatis** — workflow harian + offsite S3/R2 opsional
 
----
-
-## ⚙️ Arsitektur
+## Arsitektur
 
 ```mermaid
 flowchart TB
@@ -70,150 +49,82 @@ flowchart TB
     class DB,ST store;
 ```
 
-Frontend **tidak pernah mengakses database langsung**. Semua validasi &
-otorisasi terpusat di backend yang memakai *service-role key*. RLS diaktifkan
-di semua tabel — jadi bocornya anon key pun tidak membuka data.
+Frontend **tidak pernah mengakses database langsung**. Semua validasi & otorisasi terpusat di backend yang memakai *service-role key*. RLS diaktifkan di semua tabel — bocornya anon key pun tidak membuka data.
 
----
+## Quick Start
 
-## 🚀 Mulai Cepat
+**Prasyarat:** Python 3.12+, Node.js 20+, akun Supabase.
 
-<details>
-<summary><b>Butuh setup cepat? Klik di sini</b> (4 langkah)</summary>
-
-**Prasyarat:** Python 3.12+, Node.js 20+ & npm, akun Supabase.
-
-1. **Backend** — clone, buat venv, `pip install -r requirements.txt`.
-2. **Environment** — salin `.env.example` → `.env`, isi `SUPABASE_URL`,
-   `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET_KEY` (atau `python setup_env.py`).
-3. **Database** — jalankan `SETUP_SOLEA.sql` di Supabase, lalu
-   `python seed_direct.py`.
-4. **Frontend** — di `frontend/`: `npm ci`, salin `.env.example` → `.env`,
-   `npm run dev`; jalankan backend di port 8001. Buka **http://localhost:3000**.
-
-</details>
-
-Instruksi lengkap, tabel migrasi, dan daftar variabel ada di
-[Setup](#-detail-setup) dan [Dokumentasi](#-dokumentasi).
-
----
-
-## 🔐 Lisensi
-
-Solea dirilis dengan **lisensi MIT** — bebas dipakai, dimodifikasi, dan
-disebarluaskan untuk evaluasi dan pembelajaran.
-
-> Kredensial produksi disimpan di repo **privat terpisah**
-> (pola di `docs/REPO-PRIVAT.md`) — tidak ada secret yang di-commit di sini.
-
----
-
-## 📁 Struktur Repository
-
-```text
-.
-├── main.py                 # App FastAPI, config bersama, middleware
-├── routers/                # Endpoint per domain (auth, transaksi, stats, audit, payments)
-├── analytics.py            # Analitik deterministik + ringkasan AI opsional
-├── config.py               # BUSINESS_NAME, TRACKING_PREFIX, APP_ENV
-├── notifications.py        # Adapter WhatsApp (best-effort)
-├── payments.py             # Adapter gateway pembayaran
-├── SETUP_SOLEA.sql         # Skema + RLS + GRANTs (satu file, idempotent)
-├── seed_direct.py          # Seed layanan, admin, stock, drop point
-├── check_*.py, test_api.py # Pemeriksa skema & audit auth
-├── scripts/                # Backup, komisi, seed demo, utilitas
-├── frontend/               # React (rute lazy-loaded) + tes Playwright
-│   ├── public/screenshots/ # Screenshot untuk README
-│   └── src/
-├── docs/                   # PRD, arsitektur, panduan, serah terima
-└── .github/workflows/      # CI, cleanup foto, backup harian, deploy Fly.io
-```
-
----
-
-## ⌨️ Detail Setup
-
-### Prasyarat
-- Python 3.12+, Node.js 20+ dengan npm, akun Supabase
-
-### 1. Clone & backend
 ```bash
+# 1. Clone & setup
 git clone https://github.com/mhmmd-naufl/Solea.git
 cd Solea
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1     # Windows
-source .venv/bin/activate        # macOS/Linux
+python -m venv .venv && .venv\Scripts\activate
 pip install -r requirements.txt
+
+# 2. Environment
+cp .env.example .env   # isi SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, JWT_SECRET_KEY
+
+# 3. Database
+# Jalankan SETUP_SOLEA.sql di Supabase SQL Editor
+python seed_direct.py  # seed layanan, admin, stock, drop point
+
+# 4. Frontend
+cd frontend
+npm ci && cp .env.example .env && npm run dev
+# Jalankan backend: uvicorn main:app --reload --port 8001
+# Buka http://localhost:3000
 ```
 
-### 2. Environment
-```bash
-cp .env.example .env             # Windows: copy .env.example .env
-```
-Isi nilai wajib: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET_KEY`.
-Alternatif interaktif: `python setup_env.py`.
+<details>
+<summary><b>Instruksi detail & tabel migrasi</b></summary>
+
+### Environment
+
+| Variabel | Wajib | Default | Fungsi |
+|:---|:---:|:---|:---|
+| `SUPABASE_URL` | ✅ | — | URL project Supabase |
+| `SUPABASE_SERVICE_ROLE_KEY` | ✅ | — | Service-role key (bukan anon) |
+| `JWT_SECRET_KEY` | ✅ | — | Kunci JWT — generate: `python -c "import secrets;print(secrets.token_urlsafe(64))"` |
+| `APP_ENV` | ✅ | `development` | `production` mengaktifkan CORS fail-closed |
+| `FRONTEND_ORIGINS` | ✅ (prod) | — | Daftar origin, dipisah koma |
+| `BUSINESS_NAME` | | `Solea` | Nama yang tampil di UI & API |
+| `BUSINESS_PHONE` | | | Nomor WA admin |
+| `BUSINESS_HOURS` | | `09.00-20.00 WIB` | Jam operasional |
+| `ACCEPTED_PAYMENTS` | | `tunai,transfer,qris` | Metode bayar, dipisah koma |
+| `TRACKING_PREFIX` | | `TRX-` | Prefiks nomor tracking |
+| `RATE_LIMIT_ENABLED` | | `true` | Matikan untuk testing |
+| `CLEANUP_TOKEN` | | | Token verifikasi cron penghapusan foto |
+| `OPENROUTER_API_KEY` | | | Ringkasan AI (opsional) |
+| `PAYMENT_GATEWAY` | | `manual` | `manual` / `midtrans` / `xendit` |
 
 > Backend juga membaca `privat/.env` bila ada. Jangan commit `.env` maupun folder `privat/`.
 
-### 3. Database
-Jalankan di **Supabase SQL Editor**:
+### Migrasi database
 
 | Kondisi | File |
-| :--- | :--- |
+|:---|:---|
 | Database baru | `SETUP_SOLEA.sql` |
-| Database lama (migrasi) | `schema.sql` + `audit_log.sql` + `payments.sql` |
-| Semua kondisi | RLS & GRANTs sudah di `SETUP_SOLEA.sql` |
+| Database lama | `schema.sql` + `audit_log.sql` + `payments.sql` |
+| Semua | RLS & GRANTs wajib aktif sebelum dibuka publik |
 
-Lalu:
-```bash
-python seed_direct.py      # seed layanan, admin, stock, drop point
-```
+</details>
 
-### 4. Frontend
-```bash
-cd frontend
-npm ci
-cp .env.example .env
-npm run dev
-```
-Set `VITE_API_BASE_URL=http://127.0.0.1:8001`, lalu di terminal lain dari root:
-```bash
-uvicorn main:app --reload --port 8001
-```
-Buka **http://localhost:3000**.
+## Configuration
 
----
+### Identitas
 
-## ⚙️ Konfigurasi
-
-### Identitas aplikasi
-| Lokasi | Variabel | Default | Dipakai untuk |
-| :--- | :--- | :--- | :--- |
-| `.env` | `BUSINESS_NAME` | `Solea` | Judul API, `/api/config`, pesan WhatsApp |
-| `frontend/.env` | `VITE_BUSINESS_NAME` | `Solea` | Navbar, footer, judul halaman |
+| Lokasi | Variabel | Default |
+|:---|:---|:---|
+| `.env` | `BUSINESS_NAME` | `Solea` |
+| `frontend/.env` | `VITE_BUSINESS_NAME` | `Solea` |
 
 Keduanya harus bernilai sama. Ikon & favicon generik, bisa diganti aset sendiri.
 
-### Variabel lain yang sering diubah
-| Variabel | Fungsi |
-| :--- | :--- |
-| `BUSINESS_PHONE`, `BUSINESS_EMAIL`, `BUSINESS_ADDRESS` | Kontak di pesan & halaman status |
-| `BUSINESS_HOURS`, `ACCEPTED_PAYMENTS`, `DROP_POINTS` | Jam buka, metode bayar, daftar drop point |
-| `TRACKING_PREFIX` | Prefiks nomor tracking (default `TRX-`) |
-| `APP_ENV`, `FRONTEND_ORIGINS` | `production` mewajibkan daftar origin; CORS tak boleh `*` |
-| `WA_GATEWAY_*` | Notifikasi WhatsApp opsional |
-| `PAYMENT_API_URL`, `PAYMENT_API_KEY`, `PAYMENT_WEBHOOK_TOKEN` | Gateway pembayaran opsional |
-| `OPENROUTER_API_KEY` | Ringkasan AI opsional |
-| `CLEANUP_TOKEN` | Penghapusan foto otomatis via GitHub Actions |
-
-> ⚠️ Nilai di `.env.example` masih contoh (`6280000000000`, `contact@example.com`). Ganti sebelum produksi.
-
----
-
-## 🛠️ Script & Utilitas
+## Scripts
 
 | Perintah | Fungsi |
-| :--- | :--- |
+|:---|:---|
 | `python setup_env.py` | Membuat/melengkapi `.env` |
 | `python seed_direct.py` | Seed layanan, admin, stock, drop point |
 | `python scripts/seed_demo.ps1` | Seed data demo (transaksi, teknisi, pelanggan) |
@@ -224,56 +135,57 @@ Keduanya harus bernilai sama. Ikon & favicon generik, bisa diganti aset sendiri.
 | `python scripts/backup_database.py` | Backup ke JSON lokal |
 | `python scripts/hitung_ulang_komisi.py` | Hitung ulang komisi teknisi |
 
----
-
-## 🧪 Pengujian
+## Testing
 
 ```bash
 cd frontend
 npm run lint        # ESLint
 npm run build       # Vite build
 npm run check       # lint + build
-npm run test:e2e    # Playwright, menyalakan Vite otomatis di :3000
+npm run test:e2e    # Playwright
 ```
-Tes login E2E dilewati sampai `E2E_ADMIN_PHONE` & `E2E_ADMIN_PASSWORD` diisi.
 
-Backend: `check_schema.py`, `check_auth.py`, `test_api.py`. **Jangan jalankan seed ke database produksi.**
+Backend: `check_schema.py`, `check_auth.py`, `test_api.py`.
 
-CI (`.github/workflows/ci.yml`) menjalankan lint + build, `py_compile`, smoke test `import main`, serta uji endpoint bila secret `CI_SUPABASE_*` tersedia.
+CI (`.github/workflows/ci.yml`): lint + build, `py_compile`, smoke test `import main`.
 
----
+## Deployment
 
-## 🚢 Deployment
+| Komponen | Platform | Konfigurasi |
+|:---|:---|:---|
+| Backend | Fly.io | `fly.toml` + `Dockerfile` (Python 3.12-slim, 512MB) |
+| Frontend | Vercel | `vercel.json` (rewrite `/api/*` → Fly.io) |
+| Database | Supabase | `SETUP_SOLEA.sql` |
 
-- **Backend:** `fly.toml` + `Dockerfile` (Fly.io) atau `render.yaml` (Render) atau `Procfile` (Railway).
-- **Frontend:** `vercel.json` (Vercel) atau `npm run build` ke hosting statis mana pun.
-- Set `APP_ENV=production` + `FRONTEND_ORIGINS`. Tanpa keduanya, backend sengaja gagal start daripada membuka CORS.
-- Jalankan `SETUP_SOLEA.sql` (termasuk RLS) **sebelum** aplikasi dibuka publik.
-- Deploy otomatis: `.github/workflows/fly-deploy.yml` trigger push ke `main`.
+Deploy otomatis: `.github/workflows/fly-deploy.yml` trigger push ke `main`.
 
-### Live Instance
-| Komponen | URL |
-| :--- | :--- |
-| Frontend | https://solea-ten-pi.vercel.app |
-| Backend | https://solea-backend.fly.dev |
-| Database | Supabase (txeudyvncawbvubcvjaq) |
+## Backup
 
----
+`.github/workflows/backup.yml` berjalan harian. Hasil jadi artifact (retensi 30 hari). Untuk retensi lebih lama, isi `BACKUP_S3_BUCKET` + AWS credentials di GitHub secrets.
 
-## 💾 Backup
+## Struktur Repository
 
-`.github/workflows/backup.yml` berjalan harian (18:00 UTC / 01:00 WIB) & bisa manual.
+```text
+.
+├── main.py                 # FastAPI app, middleware, CORS, rate limiting
+├── routers/                # Endpoint per domain (auth, transaksi, stats, audit, payments)
+├── analytics.py            # Analitik deterministik + ringkasan AI opsional
+├── config.py               # BUSINESS_NAME, TRACKING_PREFIX, APP_ENV
+├── notifications.py        # Adapter WhatsApp
+├── payments.py             # Adapter gateway pembayaran
+├── SETUP_SOLEA.sql         # Skema + RLS + GRANTs (idempotent)
+├── seed_direct.py          # Seed layanan, admin, stock, drop point
+├── check_*.py / test_api.py
+├── scripts/                # Backup, komisi, seed demo
+├── frontend/               # React + Vite + Tailwind
+│   ├── public/screenshots/ # Screenshot untuk README
+│   ├── vercel.json         # Rewrite /api → Fly.io
+│   └── src/
+├── docs/                   # PRD, arsitektur, panduan
+└── .github/workflows/      # CI, deploy, backup, cleanup
+```
 
-| Secret | Fungsi |
-| :--- | :--- |
-| `BACKUP_SUPABASE_URL` | URL project yang dibackup |
-| `BACKUP_SUPABASE_SERVICE_ROLE_KEY` | Service-role key (bukan anon) |
-
-Hasil jadi artifact (retensi 30 hari). Untuk retensi lebih lama, isi `BACKUP_S3_BUCKET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` (+ `BACKUP_S3_ENDPOINT` untuk R2). File backup berisi data sensitif — jangan di-commit.
-
----
-
-## 📚 Dokumentasi
+## Dokumentasi
 
 - [`docs/prd.md`](docs/prd.md) — product requirements
 - [`docs/blueprint.md`](docs/blueprint.md) — cetakan teknis
@@ -285,8 +197,6 @@ Hasil jadi artifact (retensi 30 hari). Untuk retensi lebih lama, isi `BACKUP_S3_
 - [`docs/HANDOVER.md`](docs/HANDOVER.md) — serah terima
 - [`docs/REPO-PRIVAT.md`](docs/REPO-PRIVAT.md) — pola kredensial terpisah
 
----
-
-## 📄 Lisensi
+## License
 
 MIT — lihat [`LICENSE`](LICENSE). Bebas dipakai dan dimodifikasi.

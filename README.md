@@ -24,54 +24,13 @@ tabel, audit log, backup otomatis, dan titik integrasi pembayaran.
 
 ## 📸 Tampilan
 
-### Dashboard Admin
-Statistik omzet, distribusi status, kinerja teknisi, tren bulanan — semua dihitung deterministik di backend.
+| Login | Dashboard | Katalog | Detail Sepatu |
+| :---: | :---: | :---: | :---: |
+| <img src="frontend/public/screenshoots/Login.png" width="100%" /> | <img src="frontend/public/screenshoots/Dashboard.png" width="100%" /> | <img src="frontend/public/screenshoots/Katalog.png" width="100%" /> | <img src="frontend/public/screenshoots/Detail Sepatu.png" width="100%" /> |
 
-<div align="center">
-  <img src="frontend/public/screenshoots/Dashboard.png" alt="Dashboard" width="60%" />
-</div>
-
-### Login
-Halaman masuk dengan validasi format nomor & tampilan password.
-
-<div align="center">
-  <img src="frontend/public/screenshoots/Login.png" alt="Login" width="40%" />
-</div>
-
-### Katalog Sepatu
-Daftar layanan (master data & harga) yang bisa difilter & dikelola admin.
-
-<div align="center">
-  <img src="frontend/public/screenshoots/Katalog.png" alt="Katalog" width="80%" />
-</div>
-
-### Detail Sepatu
-Detail satu layanan lengkap dengan rentang harga, estimasi hari, dan keterangan treatment.
-
-<div align="center">
-  <img src="frontend/public/screenshoots/Detail Sepatu.png" alt="Detail Sepatu" width="60%" />
-</div>
-
-### Buat Transaksi
-Form booking multi-pasang dengan validasi jenis & nama sepatu, metode bayar, catatan konsumen.
-
-<div align="center">
-  <img src="frontend/public/screenshoots/Buat Transaksi.png" alt="Buat Transaksi" width="70%" />
-</div>
-
-### Manajemen Stok
-Tabel stok alat & bahan dengan indikator kritis (di bawah batas minimum).
-
-<div align="center">
-  <img src="frontend/public/screenshoots/Stok.png" alt="Stok" width="80%" />
-</div>
-
-### Manajemen Pengguna
-CRUD user: admin, teknisi, pelanggan, drop point — termasuk reset password & audit log.
-
-<div align="center">
-  <img src="frontend/public/screenshoots/User.png" alt="Users" width="80%" />
-</div>
+| Buat Transaksi | Stok | User |
+| :---: | :---: | :---: |
+| <img src="frontend/public/screenshoots/Buat Transaksi.png" width="100%" /> | <img src="frontend/public/screenshoots/Stok.png" width="100%" /> | <img src="frontend/public/screenshoots/User.png" width="100%" /> |
 
 ---
 

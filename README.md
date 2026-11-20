@@ -1,6 +1,6 @@
 # Solea
 
-> Sistem operasional laundry sepatu — full-stack, produksi-ready, satu lisensi.
+> Sistem operasional laundry sepatu — full-stack, produksi-ready.
 
 Solea mengubah cara kerja usaha cucian sepatu: dari catat manual yang rawan
 *human error* menjadi sistem terpusat. Pelanggan booking & pantau status
@@ -10,7 +10,7 @@ Dibangun production-grade: **Supabase + FastAPI + React**, dengan RLS di semua
 tabel, audit log, backup otomatis, dan titik integrasi pembayaran.
 
 [Fitur](#-fitur) · [Arsitektur](#-arsitektur) · [Mulai Cepat](#-mulai-cepat) ·
-[Lisensi](#-lisensi--pembelian) · [Dokumentasi](#-dokumentasi)
+[Lisensi](#-lisensi) · [Dokumentasi](#-dokumentasi)
 
 ---
 
@@ -23,9 +23,9 @@ tabel, audit log, backup otomatis, dan titik integrasi pembayaran.
 | Tidak jelas omzet & komisi teknisi | Dashboard analitik deterministik + audit log |
 | Rawan kebocoran data | RLS aktif di semua tabel, frontend tak akses DB langsung |
 
-**Satu lisensi, siap produksi.** Bukan template setengah jadi: auth, RBAC,
-pembayaran, backup, dan CI sudah tersedia dari awal. Anda tinggal ganti
-merek & kontak lewat variabel environment — tanpa menyunting kode.
+**Siap produksi, bukan template setengah jadi.** Auth, RBAC, pembayaran,
+backup, dan CI sudah tersedia dari awal. Anda tinggal ganti merek & kontak
+lewat variabel environment — tanpa menyunting kode.
 
 ---
 
@@ -94,22 +94,13 @@ Instruksi lengkap, tabel migrasi, dan daftar variabel ada di
 
 ---
 
-## 🔐 Lisensi & Pembelian
+## 🔐 Lisensi
 
-Solea didistribusikan sebagai **produk berlisensi komersial**, bukan
-perangkat lunak bebas. Lihat [`LICENSE`](LICENSE).
+Solea dirilis dengan **lisensi MIT** — bebas dipakai, dimodifikasi, dan
+disebarluaskan untuk evaluasi dan pembelajaran.
 
-| Yang Anda dapat | Cakupan |
-| :--- | :--- |
-| **Lisensi single-site** | 1 deployment produksi, untuk 1 usaha Anda |
-| **Multi-site / OEM** | Distribusi ke banyak klien, white-label — kontak penulis |
-
-Untuk harga, cara pembayaran, dan dukungan teknis:
-**hubungi penulis** (`mhmmd-naufl`).
-
-> Repo ini publik agar kode bisa dievaluasi. Kredensial produksi disimpan di
-> repo **privat terpisah** (pola di `docs/REPO-PRIVAT.md`) — tidak ada secret
-> yang di-commit di sini.
+> Kredensial produksi disimpan di repo **privat terpisah**
+> (pola di `docs/REPO-PRIVAT.md`) — tidak ada secret yang di-commit di sini.
 
 ---
 
@@ -287,5 +278,4 @@ Hasil jadi artifact (retensi 30 hari). Untuk retensi lebih lama, isi `BACKUP_S3_
 
 ## 📄 Lisensi
 
-Lisensi komersial — lihat [`LICENSE`](LICENSE). Kode di sini tersedia untuk
-evaluasi; penggunaan produksi memerlukan lisensi.
+MIT — lihat [`LICENSE`](LICENSE). Bebas dipakai dan dimodifikasi.

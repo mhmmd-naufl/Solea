@@ -1,21 +1,43 @@
-MIT License
+# Lisensi Komersial — Solea
 
-Copyright (c) 2026 Solea
+Copyright (c) 2026 Solea. Hak cipta dilindungi.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Solea didistribusikan sebagai **produk berlisensi**, bukan perangkat lunak
+bebas (bukan GPL, bukan MIT/Apache open-source).
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+## Yang Anda Dapatkan (lisensi single-site / seat)
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Dengan membeli lisensi, Anda berhak:
+
+- Menjalankan **satu** deployment produksi (satu domain / satu instansi).
+- Menggunakan, memodifikasi, dan memelihara kode untuk keperluan internal
+  usaha Anda.
+- Mendapatkan pembaruan (update) untuk versi mayor selama masa dukungan
+  (lihat syarat dukungan).
+- Mendokumentasikan modifikasi Anda untuk kebutuhan internal.
+
+## Yang TIDAK Diizinkan
+
+- **Redistribusi, penjualan, atau penyewaan ulang** kode sumber ini tanpa
+  perjanjian lisensi terpisah (OEM / white-label).
+- Menyimpan kode di repository publik atau berbagi ke pihak ketiga yang
+  tidak memiliki lisensi.
+- Menggunakan merek atau nama "Solea" sebagai bagian dari merek Anda.
+
+## Lisensi OEM / Multi-site
+
+Untuk mendistribusikan ke banyak klien, mendeploy untuk pihak lain, atau
+menghapus branding, hubungi penulis untuk lisensi OEM / enterprise.
+
+## Garansi
+
+PERANGKAT LUNAK DISEDIAKAN "SEBAGAIMANA ADANYA", TANPA JAMINAN APAPUN,
+SUKATAMA ATAU TERSIRAT. PEMBELI MENJALANKANNYA DENGAN RESIKO SENDIRI.
+Untuk detail dukungan teknis & masa update, lihat halaman dukungan / kontak
+penulis.
+
+---
+
+Lisensi komersial penuh (termasuk harga & ketentuan update) diserahkan saat
+pembelian. Dokumen ini adalah ringkasan, bukan perjanjian hukum yang
+mengikat.

@@ -343,7 +343,8 @@ def seed() -> None:
             "status": status,
             "catatan_konsumen": catatan,
             "defect_notes": defect,
-            # foto sengaja kosong: integrasi Supabase Storage belum dibuat
+            # foto sengaja dibiarkan kosong supaya demo ringan; teknisi mengisi
+            # lewat panel (upload Supabase Storage sudah diintegrasikan).
             "photo_before": None,
             "photo_after": None,
             "created_at": iso(created_at),
@@ -373,9 +374,9 @@ def seed() -> None:
 
     print("\nCatatan:")
     print("  - Hapus data dummy : python seed_dummy.py --reset")
-    print("  - Foto sengaja kosong karena integrasi Supabase Storage belum dibuat")
+    print("  - Foto sengaja kosong agar tidak membebani demo; teknisi mengisi lewat UI")
     print("  - Kolom photo_after masih kosong, jadi transaksi 'Selesai'/'Siap diambil'")
-    print("    akan ditolak backend. Ini normal untuk data demo - isi lewat UI teknisi.")
+    print("    akan ditolak backend sampai teknisi mengunggah fotonya lewat panel.")
 
 
 if __name__ == "__main__":

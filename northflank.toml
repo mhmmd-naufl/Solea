@@ -1,0 +1,30 @@
+# Northflank — konfigurasi deploy Solea backend
+#
+# Cara pakai (di dashboard Northflank):
+#   1. New Deployment > Image > Python
+#   2. Repo: mhmmd-naufl/Solea
+#   3. Build command: pip install -r requirements.txt
+#   4. Start command: uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}
+#   5. Environment variables di bawah (isi Service Role Key dari Supabase)
+#   6. Region: ap-southeast (Singapore)
+#
+# Setelah deploy, copy URL public-nya, lalu isi di frontend/.env:
+#   VITE_API_BASE_URL=https://solea-backend.<account>.northflank.space
+
+[metadata]
+app-name = solea-backend
+region = ap-southeast
+type = server
+
+[environment]
+PYTHON_VERSION = 3.12
+SUPABASE_URL = https://txeudyvncawbvubcvjaq.supabase.co
+SUPABASE_SERVICE_ROLE_KEY = <paste-here>
+JWT_SECRET_KEY = of401W5MwN42bO2yeaJtcaPf1Clnr7cDMCAPdwUm-NKpjYFkOVc3xQUz6VtfZUMc
+APP_ENV = development
+BUSINESS_NAME = Solea
+FRONTEND_ORIGINS = http://localhost:3000
+
+[resources]
+memory = 512MB
+cpu = 1

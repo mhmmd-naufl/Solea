@@ -1,0 +1,38 @@
+# .dockerignore — file yang TIDAK ikut di-build ke Docker
+# (bikin image lebih kecil & build lebih cepat)
+
+# Python virtual env lokal (Fly.io install sendiri dari requirements.txt)
+.venv/
+venv/
+
+# File lokal yang tidak boleh bocor ke production
+.env
+.env.local
+.env.*.local
+secret_key.txt
+
+# File dev-only
+koyeb.json
+northflank.toml
+seed_direct.py
+seed_pricelist.py
+seed_dummy.py
+bootstrap_admin.py
+SETUP_SOLEA.sql
+SETUP.md
+migrate.sql
+schema.sql
+rls.sql
+audit_log.sql
+payments.sql
+
+# Test & tools
+tests/
+e2e/
+playwright-report/
+test-results/
+frontend/node_modules/
+frontend/dist/
+.git/
+__pycache__/
+*.pyc

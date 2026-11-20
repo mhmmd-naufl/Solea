@@ -1,0 +1,54 @@
+# Fly.io — konfigurasi deploy Solea backend
+#
+# Cara pakai (di terminal, di folder repo ini):
+#   1. Install Fly CLI:  https://fly.io/docs/getting-started/install-standalone/
+#   2. Login:            fly auth login
+#   3. Buat app:         fly launch --no-deploy --remote-apps
+#      (Fly akan tanya nama, region, port. Pakai default:
+#       name:  solea-backend
+#       region: sin
+#       port:  8080)
+#   4. Set secret:       fly secrets set SUPABASE_SERVICE_ROLE_KEY="<paste dari Supabase>"
+#   5. Deploy:           fly deploy
+#
+# Setelah live, copy public URL (mis. https://solea-backend.fly.dev),
+# lalu isi di frontend/.env:
+#   VITE_API_BASE_URL=https://solea-backend.fly.dev
+#
+# Free tier Fly.io:
+#   - 1 VM 256MB shared-CPU per app
+#   - 3 GB bandwidth / bulan
+#   - 1800 jam / bulan
+#   - Tanpa kartu kredit
+#
+# Catatan: Fly.io akan pakai Dockerfile di root repo (sudah dibuat).
+# File .env lokal TIDAK ikut (lihat .dockerignore) — semua env vars
+# diisi lewat `fly secrets` di dashboard.
+
+app = "solea-backend"
+primary_region = "sin"   # Singapore, dekat Indonesia
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+
+[[vm]]
+  # Free tier: shared-CPU 256MB. Bisa naikkan setelah upgrade.
+  size = "shared-cpu-2x"
+  memory = "256MB"
+
+[build]
+  # Build pakai Dockerfile di root.
+  dockerfile = "Dockerfile"
+
+[deploy]
+  strategy = "rolling"
+
+# Env vars DEFAULT (nilai ini bisa di-override lewat `fly secrets set ...`).
+# SUPABASE_SERVICE_ROLE_KEY DIISI LEWAT SECRETS, jangan commit ke repo.
+[env]
+  SUPABASE_URL = "https://txeudyvncawbvubcvjaq.supabase.co"
+  JWT_SECRET_KEY = "of401W5MwN42bO2yeaJtcaPf1Clnr7cDMCAPdwUm-NKpjYFkOVc3xQUz6VtfZUMc"
+  APP_ENV = "production"
+  BUSINESS_NAME = "Solea"
+  FRONTEND_ORIGINS = "http://localhost:3000,https://solea-frontend.vercel.app"

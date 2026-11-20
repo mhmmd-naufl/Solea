@@ -52,8 +52,8 @@ export default function LoginModal() {
 
     const digits = formData.phone.replace(/\s/g, '')
     if (!digits) newErrors.phone = 'Nomor WhatsApp wajib diisi'
-    else if (!/^(\+62|62|0)8[1-9][0-9]{7,11}$/.test(digits)) {
-      newErrors.phone = 'Format tidak valid (contoh: 08123456789)'
+    else if (!/^(\+?62|0)8\d{8,13}$/.test(digits)) {
+      newErrors.phone = 'Format tidak valid (contoh: 08123456789 atau 628123456789)'
     }
 
     if (!formData.password) newErrors.password = 'Password wajib diisi'

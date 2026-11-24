@@ -1,6 +1,17 @@
-# Solea
+<p align="center">
+  <img src="frontend/public/favicon.svg" alt="Logo Solea" width="96" height="96" />
+</p>
 
-> Sistem operasional laundry sepatu — full-stack, produksi-ready.
+<h1 align="center">Solea</h1>
+
+<p align="center">
+  <b>Sistem operasional laundry sepatu — full-stack, produksi-ready.</b>
+</p>
+
+<p align="center">
+  <a href="https://solea-ten-pi.vercel.app"><img src="https://img.shields.io/badge/Live%20demo-Solea-10b981?style=for-the-badge" alt="Live demo Solea" /></a>
+  <img src="https://img.shields.io/badge/stack-FastAPI%20%E2%80%A2%20React%20%E2%80%A2%20Supabase-004AAB?style=for-the-badge" alt="Tech stack" />
+</p>
 
 Solea mengubah cara kerja usaha cucian sepatu: dari catat manual yang rawan *human error* menjadi sistem terpusat. Pelanggan booking & pantau status sendiri, teknisi kerjakan sesuai antrean, admin pantau omzet & komisi real-time.
 
@@ -116,7 +127,7 @@ npm ci && cp .env.example .env && npm run dev
 | `.env` | `BUSINESS_NAME` | `Solea` |
 | `frontend/.env` | `VITE_BUSINESS_NAME` | `Solea` |
 
-Keduanya harus bernilai sama. Ikon & favicon generik, bisa diganti aset sendiri.
+Keduanya harus bernilai sama. Ikon aplikasi (juga dipakai sebagai logo di README) ada di [`frontend/public/favicon.svg`](frontend/public/favicon.svg) — ganti file ini bila ingin memakai logo merek sendiri.
 
 ## Scripts
 
@@ -167,7 +178,8 @@ Deploy otomatis: `.github/workflows/fly-deploy.yml` trigger push ke `main`.
 ├── check_*.py / test_api.py
 ├── scripts/                # Backup, komisi, seed demo
 ├── frontend/               # React + Vite + Tailwind
-│   ├── public/screenshots/ # Screenshot untuk README
+│   ├── public/favicon.svg  # Ikon Solea (logo README + favicon)
+│   ├── public/screenshoots/ # Screenshot untuk README
 │   ├── vercel.json         # Rewrite /api → Fly.io
 │   └── src/
 ├── docs/                   # PRD, arsitektur, panduan

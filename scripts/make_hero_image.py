@@ -1,16 +1,33 @@
 """Generate a stacked-screenshots hero image for the Solea README."""
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
+import math
 import os
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHOTS = os.path.join(BASE, "frontend", "public", "screenshots")
 OUT = os.path.join(SHOTS, "hero_stack.png")
 
+# Brand palette (from frontend/public/favicon.svg)
+NAVY_TOP = (8, 24, 64)
+NAVY_BOT = (0, 58, 138)
 CARD_BG = (255, 255, 255)
 BORDER = (226, 232, 240)
 DOT_COLORS = [(248, 113, 113), (251, 191, 36), (52, 211, 153)]
 
-W, H = 1500, 780
+W, H = 1600, 920
+
+
+def gradient_bg(w, h):
+    img = Image.new("RGB", (w, h))
+    px = img.load()
+    for y in range(h):
+        t = y / (h - 1)
+        r = int(NAVY_TOP[0] + (NAVY_BOT[0] - NAVY_TOP[0]) * t)
+        g = int(NAVY_TOP[1] + (NAVY_BOT[1] - NAVY_TOP[1]) * t)
+        b = int(NAVY_TOP[2] + (NAVY_BOT[2] - NAVY_TOP[2]) * t)
+        for x in range(w):
+            px[x, y] = (r, g, b)
+    return img
 
 
 def rounded_mask(size, radius):
@@ -76,16 +93,34 @@ def rotate_with_shadow(layer, angle, shadow_blur=30, shadow_alpha=90, shadow_off
     return out
 
 
+def font(size, bold=False):
+    name = "segoeuib.ttf" if bold else "segoeui.ttf"
+    return ImageFont.truetype(os.path.join("C:/Windows/Fonts", name), size)
+
+
 def main():
     # back-to-front stack: (file, width, angle, x_anchor, top_y)
-    canvas = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-
     layers_spec = [
-        ("09_teknisi_queue.png", 280, -7, 0.16, 430),
-        ("02_status_tracking.png", 340, 5, 0.82, 410),
-        ("01_home_catalog.png", 460, -3, 0.50, 450),
-        ("Dashboard.png", 800, 0, 0.50, 240),
+        ("09_teknisi_queue.png", 290, -8, 0.15, 600),
+        ("02_status_tracking.png", 350, 6, 0.83, 580),
+        ("01_home_catalog.png", 480, -4, 0.50, 520),
+        ("Dashboard.png", 780, 0, 0.50, 400),
     ]
+
+    bg = gradient_bg(W, H).convert("RGBA")
+
+    # subtle vignette dots? keep clean. Add soft radial light top-center.
+    light = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ld = ImageDraw.Draw(light)
+    for i in range(6):
+        r = 500 - i * 60
+        alpha = 14 - i * 2
+        ld.ellipse([W // 2 - r, 120 - r // 2, W // 2 + r, 120 + r // 2],
+                   fill=(120, 170, 255, max(alpha, 0)))
+    light = light.filter(ImageFilter.GaussianBlur(80))
+    bg.alpha_composite(light)
+
+    canvas = bg
 
     for fname, tw, angle, x_anchor, top_y in layers_spec:
         win = make_window(os.path.join(SHOTS, fname), tw)
@@ -94,7 +129,19 @@ def main():
         top = min(int(top_y), H - 10 - layer.height)
         canvas.alpha_composite(layer, (x, top))
 
-    canvas.save(OUT, "PNG", optimize=True)
+    # caption
+    d = ImageDraw.Draw(canvas)
+    f_title = font(44, bold=True)
+    f_sub = font(22)
+    title = "Solea"
+    sub = "Sistem Operasional Laundry Sepatu"
+    tw = d.textlength(title, font=f_title)
+    d.text((W / 2 - tw / 2, 80), title, font=f_title, fill=(255, 255, 255))
+    tw2 = d.textlength(sub, font=f_sub)
+    d.text((W / 2 - tw2 / 2, 140), sub, font=f_sub, fill=(190, 210, 245))
+
+    # bottom fade to transparent-ish dark for text safety not needed; save RGB
+    canvas.convert("RGB").save(OUT, "PNG", optimize=True)
     print("saved", OUT, canvas.size)
 
 

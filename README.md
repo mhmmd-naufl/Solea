@@ -21,7 +21,7 @@ Dibangun production-grade dengan **Supabase + FastAPI + React**, RLS di semua ta
 
 **Live demo:** [https://solea-ten-pi.vercel.app](https://solea-ten-pi.vercel.app) — login: `6280000000000` / `admin123`
 
-<img src="frontend/public/screenshots/Dashboard.png" alt="Dashboard Solea" />
+<img src="frontend/public/screenshots/hero_stack.png" alt="Tampilan Solea: dashboard admin, katalog layanan, tracking status, dan antrean teknisi" width="100%" />
 
 ## Features
 

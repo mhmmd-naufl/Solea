@@ -21,7 +21,7 @@ Dibangun production-grade dengan **Supabase + FastAPI + React**, RLS di semua ta
 
 **Live demo:** [https://solea-ten-pi.vercel.app](https://solea-ten-pi.vercel.app) — login: `6280000000000` / `admin123`
 
-<img src="frontend/public/screenshoots/Dashboard.png" alt="Dashboard Solea" />
+<img src="frontend/public/screenshots/Dashboard.png" alt="Dashboard Solea" />
 
 ## Features
 

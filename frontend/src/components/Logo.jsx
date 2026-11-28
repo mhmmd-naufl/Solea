@@ -6,8 +6,8 @@ import { BUSINESS_NAME } from '../config'
 //   biru  -> untuk latar terang (navbar, kartu login, header panel)
 //   putih -> untuk latar gelap (panel kiri halaman daftar, bg primary)
 const SUMBER = {
-  biru: ['/assets/logo-biru.svg', '/assets/logo-biru.png'],
-  putih: ['/assets/logo-putih.svg', '/assets/logo-putih.png'],
+  biru: ['/assets/logo-solea-biru.svg', '/assets/logo-solea-biru.png'],
+  putih: ['/assets/logo-solea-putih.svg', '/assets/logo-solea-putih.png'],
 }
 
 /**

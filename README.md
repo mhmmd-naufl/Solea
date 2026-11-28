@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="frontend/public/favicon.svg" alt="Logo Solea" width="96" height="96" />
+  <img src="frontend/public/assets/logo-solea-biru.svg" alt="Logo Solea" width="96" height="96" />
 </p>
 
 <h1 align="center">Solea</h1>
@@ -127,7 +127,7 @@ npm ci && cp .env.example .env && npm run dev
 | `.env` | `BUSINESS_NAME` | `Solea` |
 | `frontend/.env` | `VITE_BUSINESS_NAME` | `Solea` |
 
-Keduanya harus bernilai sama. Ikon aplikasi (juga dipakai sebagai logo di README) ada di [`frontend/public/favicon.svg`](frontend/public/favicon.svg) — ganti file ini bila ingin memakai logo merek sendiri.
+Keduanya harus bernilai sama. Ikon aplikasi (juga dipakai sebagai logo di README) ada di [`frontend/public/assets/logo-solea-biru.svg`](frontend/public/assets/logo-solea-biru.svg) — ganti file ini (plus varian `-putih` dan `icon-*.png`) bila ingin memakai logo merek sendiri.
 
 ## Scripts
 
@@ -178,7 +178,8 @@ Deploy otomatis: `.github/workflows/fly-deploy.yml` trigger push ke `main`.
 ├── check_*.py / test_api.py
 ├── scripts/                # Backup, komisi, seed demo
 ├── frontend/               # React + Vite + Tailwind
-│   ├── public/favicon.svg  # Ikon Solea (logo README + favicon)
+│   ├── public/favicon.ico  # Favicon ICO multi-size
+│   ├── public/assets/      # logo-solea-*.svg/png, icon-*.png (favicon & apple-touch-icon)
 │   ├── public/screenshoots/ # Screenshot untuk README
 │   ├── vercel.json         # Rewrite /api → Fly.io
 │   └── src/
